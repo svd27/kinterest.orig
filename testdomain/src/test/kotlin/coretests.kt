@@ -1,3 +1,4 @@
+/*
 package ch.passenger.kinterest.neo4j
 
 import org.junit.Before
@@ -32,9 +33,11 @@ import javax.swing.JOptionPane
 import kotlin.test.assertNotNull
 
 
+*/
 /**
  * Created by svd on 12/12/13.
- */
+ *//*
+
 
 
 open class BasicNeo4jTest() {
@@ -148,4 +151,4 @@ open class BasicNeo4jTest() {
             log.info("$it -> ${n.getProperty(it)}\n")
         }
     }
-}
+}*/

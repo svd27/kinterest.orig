@@ -43,18 +43,6 @@ class TestATempl( val id:Long, val store : Neo4jDatastore<Long>, val node:Node) 
 
     class object {
         val kind = "ch.passenger.kinterest.testdomain.TestA"
-        fun create(name:String, weight:TestB?, store:Neo4jDatastore<Long>) : TestA {
-            return store.tx<TestA> {
-                val node = store.create(store.nextSequence(kind), kind) {
-                it.setProperty("name", name)
-                it.setProperty("options", "")
-                }
-
-                val res = TestATempl(node.getProperty("ID") as Long, store, node)
-                store.setRelation(res, weight, "weight", true)
-                res
-            }
-        }
         fun get(id:Long, store:Neo4jDatastore<Long>) : TestA? {
             val node = store.node(id, kind)
             if(node!=null) return TestATempl(id, store, node)
@@ -77,17 +65,6 @@ class TestATempl( val id:Long, val store : Neo4jDatastore<Long>, val node:Node) 
 class TestAGalaxyTemplate(val neo4j:Neo4jDatastore<Long>) : Galaxy<TestA,Long>(javaClass<TestA>(), neo4j) {
     override fun generateId(): Long = neo4j.nextSequence(kind) as Long
     override fun retrieve(id: Long): TestA? = TestATempl.get(id, neo4j)
-    override fun create(values:Map<String,Any?>) : TestA {
-        val n = neo4j.create(neo4j.nextSequence(kind),kind) {
-            values.entrySet().forEach {
-                e ->
-                if(e.getKey()!="ID" && e.getKey()!="KIND") {
-                    it.setProperty(e.getKey(), e.getValue())
-                }
-            }
-        }
-        return TestATempl.get(n.getProperty("ID") as Long, neo4j)!!
-    }
 }
 
 public fun boostrapTestATemp(db:Neo4jDbWrapper) {

@@ -39,20 +39,6 @@ set(v) = prop("options", v)
   class object {
     val kind : String = "TestA"
     val galaxy : ch.passenger.kinterest.Galaxy<ch.passenger.kinterest.testdomain.TestA,Long> get() = ch.passenger.kinterest.Universe.galaxy(javaClass<ch.passenger.kinterest.testdomain.TestA>())!!
-    fun create(id:Long, weight : ch.passenger.kinterest.testdomain.TestB?, mustbeset : Double, name : String ,  store:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>) : ch.passenger.kinterest.testdomain.TestA {
-                val node = store.create(id, kind){
-                
-it.setProperty("lots",6.6)
-if(weight!=null)
-                    TestAImpl.galaxy.createRelation(id, "TestB", weight.id(), "weight", true)
-                    
-it.setProperty("mustbeset",mustbeset)
-it.setProperty("name",name)
-it.setProperty("options","")
-                }
-                return TestAImpl(id, store, node)
-
-        }
         fun get(id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>) : ch.passenger.kinterest.testdomain.TestA? {
         return store.tx {
            var res : ch.passenger.kinterest.testdomain.TestA? = null
@@ -67,17 +53,7 @@ it.setProperty("options","")
 class TestAGalaxy(val neo4j:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>) : ch.passenger.kinterest.Galaxy<ch.passenger.kinterest.testdomain.TestA,Long>(javaClass<ch.passenger.kinterest.testdomain.TestA>(), neo4j) {
     override fun generateId(): Long = neo4j.nextSequence(kind) as Long
     override fun retrieve(id: Long): ch.passenger.kinterest.testdomain.TestA? = TestAImpl.get(id, neo4j)
-    override fun create(values:Map<String,Any?>) : ch.passenger.kinterest.testdomain.TestA {
-        val n = neo4j.create(generateId(), kind) {
-            values.entrySet().forEach {
-                e ->
-                if(e.getKey()!="ID" && e.getKey()!="KIND") {
-                    it.setProperty(e.getKey(), e.getValue())
-                }
-            }
-        }
-        return TestAImpl.get(n.getProperty("ID") as Long, neo4j)!!
-    }
+
 }
 
 public fun boostrapTestA(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
@@ -107,16 +83,6 @@ get() = prop("comment")
   class object {
     val kind : String = "TestB"
     val galaxy : ch.passenger.kinterest.Galaxy<ch.passenger.kinterest.testdomain.TestB,Long> get() = ch.passenger.kinterest.Universe.galaxy(javaClass<ch.passenger.kinterest.testdomain.TestB>())!!
-    fun create(id:Long, weight : Double , name : String , comment : String?,  store:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>) : ch.passenger.kinterest.testdomain.TestB {
-                val node = store.create(id, kind){
-                
-it.setProperty("weight",weight)
-it.setProperty("name",name)
-it.setProperty("comment",comment)
-                }
-                return TestBImpl(id, store, node)
-
-        }
         fun get(id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>) : ch.passenger.kinterest.testdomain.TestB? {
         return store.tx {
            var res : ch.passenger.kinterest.testdomain.TestB? = null
@@ -131,17 +97,6 @@ it.setProperty("comment",comment)
 class TestBGalaxy(val neo4j:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>) : ch.passenger.kinterest.Galaxy<ch.passenger.kinterest.testdomain.TestB,Long>(javaClass<ch.passenger.kinterest.testdomain.TestB>(), neo4j) {
     override fun generateId(): Long = neo4j.nextSequence(kind) as Long
     override fun retrieve(id: Long): ch.passenger.kinterest.testdomain.TestB? = TestBImpl.get(id, neo4j)
-    override fun create(values:Map<String,Any?>) : ch.passenger.kinterest.testdomain.TestB {
-        val n = neo4j.create(generateId(), kind) {
-            values.entrySet().forEach {
-                e ->
-                if(e.getKey()!="ID" && e.getKey()!="KIND") {
-                    it.setProperty(e.getKey(), e.getValue())
-                }
-            }
-        }
-        return TestBImpl.get(n.getProperty("ID") as Long, neo4j)!!
-    }
 }
 
 public fun boostrapTestB(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {

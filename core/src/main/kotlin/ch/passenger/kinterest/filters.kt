@@ -45,6 +45,7 @@ abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>,
             val target = "get"+property.capitalize()
             for(m in element.javaClass.getMethods()) {
                 if(m.getName()==target) method=m
+                if(method==null && m.getName()==property) method = m
             }
             if(method==null) throw IllegalStateException()
         }

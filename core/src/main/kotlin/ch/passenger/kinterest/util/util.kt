@@ -1,5 +1,7 @@
 package ch.passenger.kinterest.util
 
+import java.util.HashMap
+
 /**
  * Created by svd on 16/12/13.
  */
@@ -9,4 +11,9 @@ fun AutoCloseable.with<T>(run: () -> T?) {
     } finally {
         close()
     }
+}
+fun<K,V> Map<K,V>.filter(predicate: (Pair<K,V>)->Boolean) : Map<K,V> {
+    val res : MutableMap<K,V> = HashMap()
+    this.entrySet().forEach { if(predicate(Pair(it.key,it.value))) res[it.key] = it.value}
+    return res
 }

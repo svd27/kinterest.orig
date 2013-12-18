@@ -20,6 +20,10 @@ import java.util.Comparator
 import javax.persistence.Transient
 import javax.persistence.OneToOne
 import org.jetbrains.annotations.Nullable
+import javax.persistence.Id
+import javax.persistence.UniqueConstraint
+import ch.passenger.kinterest.annotations.Index
+import ch.passenger.kinterest.util.filter
 
 /**
  * Created by svd on 11/12/13.
@@ -30,6 +34,7 @@ private val log : Logger = LoggerFactory.getLogger("ch.passenger.kinterest.core"
 //}
 
 trait LivingElement<T:Hashable> {
+    Id
     public fun id() : T
     public fun consume(evt:UpdateEvent<T,Any?>) {
         subject.onNext(evt)
@@ -48,7 +53,7 @@ public enum class EventTypes {
 
 open class Event<U:Hashable>(public val sourceType : String, public val kind : EventTypes)
 open class ElementEvent<U:Hashable>(sourceType : String, public val id:U, kind : EventTypes) : Event<U>(sourceType, kind)
-class UpdateEvent<U:Hashable,V>(sourceType : String, id:U, public val property:String, public val value:V, public val old:V)
+class UpdateEvent<U:Hashable,V>(sourceType : String, id:U, public val property:String, public val value:V?, public val old:V?)
 : ElementEvent<U>(sourceType, id, EventTypes.UPDATE)
 class CreateEvent<U:Hashable>(sourceType : String, id:U)
 : ElementEvent<U>(sourceType, id, EventTypes.CREATE)
@@ -67,18 +72,34 @@ trait DataStore<T:Event<U>, U:Hashable> {
     /**
      * this is called to initialise non-nullable relations when the root has not yet been created
      */
-    fun<U:Hashable,V:Hashable> createRelation(fromKind:String,from:U,toKind:String,to:V,relation:String, optional:Boolean)
-    fun<U:Hashable,V:Hashable> findRelation(fromKind:String,from:U,toKind:String, relation:String) : V?
-    fun<A:LivingElement<U>,B:LivingElement<V>,U:Hashable,V:Hashable> setRelation(from:A,to:B?, relation:String, optional:Boolean)
-    fun<A:LivingElement<U>,U:Hashable> deleteRelation(from:A, relation:String)
-    fun<A:LivingElement<U>,B:LivingElement<V>,U:Hashable,V:Hashable> findRelations(from:A,to:Class<B>, relation:String) : Observable<V>
-    fun<A:LivingElement<U>,B:LivingElement<V>,U:Hashable,V:Hashable> addRelation(from:A,to:B, relation:String)
-    fun<A:LivingElement<U>,B:LivingElement<V>,U:Hashable,V:Hashable> removeRelation(from:A,to:B, relation:String)
+    fun<V:Hashable> createRelation(fromKind:String,from:U,toKind:String,to:V,relation:String, optional:Boolean)
+    fun<V:Hashable> findRelation(fromKind:String,from:U,toKind:String, relation:String) : V?
+    fun<A:LivingElement<U>,B:LivingElement<V>,V:Hashable> setRelation(from:A,to:B?, old:B?, relation:String, optional:Boolean, desc:DomainObjectDescriptor<A,U>)
+    fun<A:LivingElement<U>> deleteRelation(from:A, relation:String, desc:DomainObjectDescriptor<A,U>)
+    fun<A:LivingElement<U>,B:LivingElement<V>,V:Hashable> findRelations(from:A,to:Class<B>, relation:String, desc:DomainObjectDescriptor<A,U>) : Observable<V>
+    fun<A:LivingElement<U>,B:LivingElement<V>,V:Hashable> addRelation(from:A,to:B, relation:String, desc:DomainObjectDescriptor<A,U>)
+    fun<A:LivingElement<U>,B:LivingElement<V>,V:Hashable> removeRelation(from:A,to:B, relation:String, desc:DomainObjectDescriptor<A,U>)
+    /**
+     * should be called by any galaxy during init to ensure proper schema init (constraints, indices, etc)
+     */
+    fun<A:LivingElement<U>> schema(cls:Class<A>, desc:DomainObjectDescriptor<A,U>)
+    fun<A:LivingElement<U>> create(id:U, values:Map<String,Any>, descriptor:DomainObjectDescriptor<A,U>)
 }
 
 trait DomainObject {
     fun get(p:String):Any?
     fun set(p:String, value:Any?):Unit
+}
+
+class DomainObjectDescriptor<T:LivingElement<U>,U:Hashable>(val cls : Class<T>) {
+    public val entity : String = cls.entityName();
+    public val uniques : Iterable<String> = cls.getMethods().filter {
+        it.unique()
+    }.map { it.propertyName() }
+    public val indices : Iterable<String> = cls.getMethods().filter {
+        it.index()
+    }.map { it.propertyName() }
+
 }
 
 open class Interest<T:LivingElement<U>,U:Hashable>(val name:String, val target:Class<T>) {
@@ -132,10 +153,18 @@ open class Interest<T:LivingElement<U>,U:Hashable>(val name:String, val target:C
     }
     protected fun load() {
         if(filter.relation==FilterRelations.STATIC) return
+        val del = ArrayList(order)
         order.clear()
+        del.forEach {
+            order.remove(it)
+            subject.onNext(RemoveEvent(sourceType, it))
+        }
+
+        log.info("$name: loading....")
         val obs = object : Observer<T> {
 
             override fun onCompleted() {
+                log.info("$name: loaded ${order.size}")
                 subject.onNext(OrderEvent(sourceType, ArrayList(order)))
             }
             override fun onError(e: Throwable?) {
@@ -150,7 +179,7 @@ open class Interest<T:LivingElement<U>,U:Hashable>(val name:String, val target:C
 
     public fun add(t:T) :Boolean {
         val res = order.add(t.id())
-        subject.onNext(AddEvent(sourceType, t.id()))
+        if(res) subject.onNext(AddEvent(sourceType, t.id()))
         return res
     }
 
@@ -161,6 +190,7 @@ open class Interest<T:LivingElement<U>,U:Hashable>(val name:String, val target:C
     }
 
     public fun consume(e:ElementEvent<U>) {
+        log.info("### consume $e ###")
         when(e) {
             is UpdateEvent<U,*> -> consumeUpdate(e)
             is CreateEvent<U> -> consumeCreate(e)
@@ -173,6 +203,7 @@ open class Interest<T:LivingElement<U>,U:Hashable>(val name:String, val target:C
         if(order.remove(e.id)) {
             subject.onNext(e)
             subject.onNext(RemoveEvent(sourceType, e.id))
+            load()
         }
     }
 
@@ -180,8 +211,8 @@ open class Interest<T:LivingElement<U>,U:Hashable>(val name:String, val target:C
     private fun consumeCreate(e:CreateEvent<U>) {
         val el = get(e.id)
         if(el!=null && filter.accept(el)) {
+            if(!add(el)) return
             subject.onNext(e)
-            add(el)
             resort()
         }
     }
@@ -217,6 +248,7 @@ open class Interest<T:LivingElement<U>,U:Hashable>(val name:String, val target:C
     open public fun size() : Int = order.size
     open public fun contains(t:T ) : Boolean = order.contains(t.id())
     open public fun at(idx:Int) : T = get(order[idx])!!
+    public fun indexOf(t:U) : Int = order.indexOf(t)
 }
 
 
@@ -237,13 +269,15 @@ object Universe {
 }
 
 
-abstract class Galaxy<T:LivingElement<U>,U:Hashable>(val sourceType:Class<*>, val store:DataStore<Event<U>,U>) {
+abstract class Galaxy<T:LivingElement<U>,U:Hashable>(val sourceType:Class<T>, val store:DataStore<Event<U>,U>) {
+    public val descriptor : DomainObjectDescriptor<T,U> = DomainObjectDescriptor(sourceType)
     val heaven : MutableMap<U,T> = WeakHashMap()
     val interests : MutableSet<Interest<T,U>> = HashSet()
     val kind :String;
     val onetoone : MutableMap<String,Relation<LivingElement<Hashable>,Hashable>> = HashMap();
     val onetomany : MutableMap<String,Relation<LivingElement<Hashable>,Hashable>> = HashMap();
     {
+        store.schema(sourceType, descriptor)
         var entity : Entity = sourceType.getAnnotation(javaClass<Entity>())!!;
         sourceType.getMethods().forEach {
             val mn = it.getName()!!
@@ -266,8 +300,9 @@ abstract class Galaxy<T:LivingElement<U>,U:Hashable>(val sourceType:Class<*>, va
         }
 
         kind = if(entity.name()==null || entity.name()?.trim()?.length()==0) sourceType.javaClass.getName() else entity.name()!!
-        store.observable.ofType(javaClass<ElementEvent<U>>())!!.subscribe {
+        store.observable.subscribe {
             e ->
+            log.info("GALAXY ${this.kind} ### $e ###")
             if(e is DeleteEvent) {
                 heaven.remove(e.id)
             }
@@ -285,9 +320,14 @@ abstract class Galaxy<T:LivingElement<U>,U:Hashable>(val sourceType:Class<*>, va
                     }
                 }
             }
-
-            interests.forEach { it.consume(e!!) }
+            if(e is ElementEvent<U>) interests.forEach { it.consume(e) }
         }
+    }
+
+    public fun interest(name:String="") : Interest<T,U> {
+        val interest = Interest(name, sourceType as Class<T>)
+        interests.add(interest)
+        return interest
     }
 
     class Relation<T:LivingElement<U>,U:Hashable>(val name:String,  val getter:Method, val setter:Method?, val target:Class<T>) {
@@ -301,7 +341,11 @@ abstract class Galaxy<T:LivingElement<U>,U:Hashable>(val sourceType:Class<*>, va
     }
 
     abstract protected fun retrieve(id:U) : T?
-    abstract public fun create(values:Map<String,Any?>) :T
+    public fun create(values:Map<String,Any>) {
+        assert( descriptor.uniques.all { values.containsKey(it) } )
+        store.create(generateId(), values, descriptor)
+    }
+
     abstract public fun generateId() : U
 
 
@@ -313,8 +357,8 @@ abstract class Galaxy<T:LivingElement<U>,U:Hashable>(val sourceType:Class<*>, va
         log.info("relation for $from")
         return store.findRelation(kind, from , to.entityName(), relation)
     }
-    public fun<X:LivingElement<Y>,Y:Hashable> setRelation(from:T, to:X, relation:String, optional:Boolean) {
-        store.setRelation(from, to, relation, optional)
+    public fun<X:LivingElement<Y>,Y:Hashable> setRelation(from:T, to:X?, old:X?, relation:String, optional:Boolean) {
+        store.setRelation(from, to, old, relation, optional, descriptor)
     }
 
     public fun<Y:Hashable> createRelation(from:U, toKind:String, to:Y, relation:String, optional:Boolean) {
@@ -326,4 +370,13 @@ fun<T:LivingElement<U>,U:Hashable> Class<T>.entityName() : String {
     val ann = getAnnotation(javaClass<Entity>())
     if(ann!=null && ann.name()!=null && ann.name().isNotEmpty()) return ann.name()!!
     return getName()
+}
+
+fun Method.unique() : Boolean = getAnnotation(javaClass<UniqueConstraint>()) != null
+fun Method.index() : Boolean = getAnnotation(javaClass<Index>()) != null
+fun Method.propertyName() : String {
+    val mn = getName()!!
+    if((mn.startsWith("set") || mn.startsWith("get")) && mn.length>3) return mn.substring(3).decapitalize()
+    if(mn.startsWith("is") && getReturnType()!!.isAssignableFrom(javaClass<Boolean>()) && mn.length>2) return mn.substring(2).decapitalize()
+    return mn
 }
