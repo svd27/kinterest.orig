@@ -19,7 +19,7 @@ trait Diary : LivingElement<Long> {
 
     Id
     override fun id(): Long
-    val owner : User [OneToOne(targetEntity=javaClass<User>())] get
+    val owner : DiaryOwner [OneToOne(targetEntity=javaClass<DiaryOwner>())] get
     val title : String
     val created : Date [DefaultValue("java.util.Date()")] get
 
@@ -32,8 +32,8 @@ trait DiaryDayEntry : LivingElement<Long> {
     var title : String
 }
 
-Entity(name="User")
-trait User : LivingElement<Long> {
+Entity(name="DiaryOwner")
+trait DiaryOwner : LivingElement<Long> {
     Id
     override fun id(): Long
     val email : String [UniqueConstraint] get

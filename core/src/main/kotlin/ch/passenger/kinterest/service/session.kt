@@ -25,27 +25,25 @@ public open class KIPrincipal(val name:String, val token:String) : Principal {
         return false
     }
     override fun hashCode(): Int = token.hashCode()
+
+    class object {
+        val ANONYMOUS = KIPrincipal("guest", "")
+    }
 }
 
-public open class KISession(principal:KIPrincipal)
+public open class KISession(val principal:KIPrincipal)
 
 
 
 public class ServiceDescriptor(val service : Class<Service>) {
-    private val lexicon : Map<String,DomainObjectDescriptor<*,*>>;
-    {
-        val lex : MutableMap<String,DomainObjectDescriptor<*,*>> = HashMap()
-
-        lexicon = lex
-    }
 }
 
 public open class Service(name:String) {}
 
 public open class InterestService<T:LivingElement<U>,U:Hashable>(name:String,val galaxy:Galaxy<T,U>) : Service(name) {
     private val log = LoggerFactory.getLogger(this.javaClass)!!
-    public fun create(name:String="") : Interest<T,U> = galaxy.interest(name)
-    public fun query(i:Interest<T,U>, filter:ElementFilter<T,U>) : Unit {i.filter = filter}
+    public fun create(name:String=""): Int = galaxy.interested(name).id
+    public fun query(id:Int, filter:ElementFilter<T,U>) : Unit {galaxy.interests[id]?.filter = filter}
     public fun createElement(values : Map<String,Any?>) : Unit {
         galaxy.create(values)
     }

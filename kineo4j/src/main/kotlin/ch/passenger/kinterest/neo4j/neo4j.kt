@@ -98,36 +98,46 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
             override fun afterCommit(data: TransactionData?, state: Node?) {
                 if (data == null) return
                 data.createdNodes()?.forEach {
-                    val nkind = it.getProperty("KIND")?.toString()
-                    log.info("created node ${it.getId()}:$nkind")
-                    if (nkind != null)
-                        subject.onNext(CreateEvent(nkind, it.getProperty("ID") as U))
+                    if ((it?.hasProperty("ID"))?:false && !it?.hasProperty("KIND")?:false) {
+                        val nkind = it.getProperty("KIND")?.toString()
+                        log.info("created node ${it.getId()}:$nkind")
+                        if (nkind != null)
+                            subject.onNext(CreateEvent(nkind, it.getProperty("ID") as U))
+                    }
                 }
                 data.deletedNodes()?.forEach {
-                    log.info("deleted node ${it.getId()}")
-                    val nkind = it.getProperty("KIND")?.toString()
-                    if (nkind != null)
-                        subject.onNext(DeleteEvent(nkind, it.getProperty("ID") as U))
+                    if (it?.hasProperty("ID")?:false && !it?.hasProperty("KIND")?:false) {
+                        log.info("deleted node ${it.getId()}")
+                        val nkind = it.getProperty("KIND")?.toString()
+                        if (nkind != null)
+                            subject.onNext(DeleteEvent(nkind, it.getProperty("ID") as U))
+                    }
                 }
                 data.assignedNodeProperties()?.forEach {
-                    log.info("prop change: ${it.entity()?.getId()}.${it.key()}: ${it.previouslyCommitedValue()} -> ${it.value()}")
-                    val nkind = it.entity()?.getProperty("KIND")?.toString()
-                    if (nkind != null)
-                        subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
-                                it.key()!!, it.value(), it.previouslyCommitedValue()))
+                    if (it.entity()?.hasProperty("ID")?:false && it.entity()?.hasProperty("KIND")?:false) {
+                        log.info("prop change: ${it.entity()?.getId()}.${it.key()}: ${it.previouslyCommitedValue()} -> ${it.value()}")
+                        val nkind = it.entity()?.getProperty("KIND")?.toString()
+                        if (nkind != null)
+                            subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
+                                    it.key()!!, it.value(), it.previouslyCommitedValue()))
+                    }
                 }
                 data.removedNodeProperties()?.forEach {
-                    val nkind = it.entity()?.getProperty("KIND")?.toString()
-                    if (nkind != null)
-                        subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
-                                it.key()!!, null, it.previouslyCommitedValue()))
+                    if (it?.entity()?.hasProperty("ID")?:false && it?.entity()?.hasProperty("KIND")?:false) {
+                        val nkind = it.entity()?.getProperty("KIND")?.toString()
+                        if (nkind != null)
+                            subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
+                                    it.key()!!, null, it.previouslyCommitedValue()))
+                    }
                 }
                 data.createdRelationships()?.forEach {
-                    val from = it.getStartNode()
-                    val nkind = from?.getProperty("KIND")?.toString()
-                    val toid = it.getEndNode()?.getProperty("ID")
-                    if (nkind != null)
-                        subject.onNext(UpdateEvent(nkind, from?.getProperty("ID") as U, it.getType()?.name()!!, toid, null))
+                    val from = it.getStartNode()!!
+                    if (from.hasProperty("ID") && from.hasProperty("KIND")) {
+                        val nkind = from?.getProperty("KIND")?.toString()
+                        val toid = it.getEndNode()?.getProperty("ID")
+                        if (nkind != null)
+                            subject.onNext(UpdateEvent(nkind, from?.getProperty("ID") as U, it.getType()?.name()!!, toid, null))
+                    }
                 }
 
             }
@@ -209,10 +219,10 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
             MERGE (n:$kind {ID: {id}, KIND: "${descriptor.entity}"${if (inits.length > 0) ", " else ""} $inits})
             RETURN n
             """;
-            val m : MutableMap<String,Any> = HashMap()
+            val m: MutableMap<String, Any> = HashMap()
             values.entrySet().forEach {
                 val v = it.value
-                if(v !=null) m[it.key] = v
+                if (v != null) m[it.key] = v
                 else m[it.key] = "NULL"
             }
             m["id"] = id
@@ -269,7 +279,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         return el.getName()
     }
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old:B?, relation: String, optional: Boolean, desc:DomainObjectDescriptor<A,U>) {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor<A, U>) {
         if (to == null) {
             deleteRelation(from, relation, desc)
             return
@@ -326,7 +336,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>> deleteRelation(from: A, relation: String, desc:DomainObjectDescriptor<A,U>) {
+    override fun <A : LivingElement<U>> deleteRelation(from: A, relation: String, desc: DomainObjectDescriptor<A, U>) {
         val pars = mapOf("from" to from.id())
         val q =
                 """
@@ -335,7 +345,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         DELETE r
         RETURN to.ID as ID
         """
-        var del : Hashable? = null
+        var del: Hashable? = null
         tx {
             val res = engine.execute(q, pars)
             del = res?.columnAs<Hashable>("ID")?.iterator()?.take(1) as Hashable?
@@ -345,7 +355,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc:DomainObjectDescriptor<A,U>): Observable<V> {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor<A, U>): Observable<V> {
         val pars = mapOf("from" to from.id())
         val q =
                 """
@@ -360,7 +370,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc:DomainObjectDescriptor<A,U>) {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor<A, U>) {
         val pars = mapOf("from" to from.id(), "to" to  to.id(), "optional" to true)
         val q =
                 """
@@ -375,7 +385,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc:DomainObjectDescriptor<A,U>) {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor<A, U>) {
         val pars = mapOf("from" to from.id(), "to" to to.id())
         val q =
                 """
@@ -399,23 +409,25 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
 
             try {
                 tx {
-                    if(!(db.db.index()?.existsForNodes(":${desc.entity}($it)")?:false))
-                    engine.execute(
-                            """
+                    if (!(db.db.index()?.existsForNodes(":${desc.entity}($it)")?:false))
+                        engine.execute(
+                                """
                             CREATE INDEX ON :${desc.entity}($it)
                             """
-                    )
+                        )
                 }
             } catch(e: CypherExecutionException) {
-                if(e.getCause() is AlreadyIndexedException) {
+                if (e.getCause() is AlreadyIndexedException) {
                     log.warn(e.getMessage())
                 }
             }
         }
         desc.uniques.forEach {
             val label = DynamicLabel.label(desc.entity)
-            tx { if(!(db.db.schema()!!.getConstraints(label)?.iterator()?.hasNext()?:false))
-             db.db.schema()!!.constraintFor(label)!!.on(it)!!.unique()!!.create() }
+            tx {
+                if (!(db.db.schema()!!.getConstraints(label)?.iterator()?.hasNext()?:false))
+                    db.db.schema()!!.constraintFor(label)!!.on(it)!!.unique()!!.create()
+            }
         }
 
     }
@@ -466,12 +478,12 @@ class Neo4jFilterFactory {
 
     fun<T : LivingElement<U>, U : Hashable> prop(f: PropertyFilter<T, U, *>, pars: MutableMap<String, Any> = HashMap()): String {
         val pn = "p${pars.size + 1}"
-        log.info("prop: ${pn} ${if(f.property=="id") "ID" else f.property} ${f.relation} ${f.value}")
+        log.info("prop: ${pn} ${if (f.property == "id") "ID" else f.property} ${f.relation} ${f.value}")
 
         pars.put(pn, f.value)
         log.info("$pars")
         //pars[pn] = f.value
-        return "(n.${if(f.property=="id") "ID" else f.property} ${op(f.relation)} { $pn })"
+        return "(n.${if (f.property == "id") "ID" else f.property} ${op(f.relation)} { $pn })"
     }
 
     fun<T : LivingElement<U>, U : Hashable> combine(f: CombinationFilter<T, U>, pars: MutableMap<String, Any> = HashMap()): String {
@@ -522,8 +534,8 @@ public fun Node.dump(): String {
 
 abstract class Neo4jDomainObject(val oid: Hashable, val store: Neo4jDatastore<*>, protected val kind: String, private val node: Node) : DomainObject {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject>())!!
-    protected fun<T> prop(name: String): T? = store.tx { node().getProperty(if(name=="id") "ID" else name) as T? }
-    protected fun<T> prop(name: String, value: T?): Unit = store.tx { node().setProperty((if(name=="id") "ID" else name), value) }
+    protected fun<T> prop(name: String): T? = store.tx { node().getProperty(if (name == "id") "ID" else name) as T? }
+    protected fun<T> prop(name: String, value: T?): Unit = store.tx { node().setProperty((if (name == "id") "ID" else name), value) }
 
     protected inline fun node(): Node = node
 

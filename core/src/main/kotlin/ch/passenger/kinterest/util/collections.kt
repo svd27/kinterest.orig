@@ -21,7 +21,7 @@ abstract class ObservableList<T:LivingElement<U>,U:Hashable> : AbstractList<T>()
 }
 
 class InterestList<T:LivingElement<U>,U:Hashable>(protected val interest:Interest<T,U>) : ObservableList<T,U>() {
-    override fun size(): Int = interest.size()
+    override fun size(): Int = interest.size
     override fun get(index: Int): T = interest.at(index)
 
 

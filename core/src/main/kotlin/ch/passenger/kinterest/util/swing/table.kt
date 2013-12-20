@@ -75,7 +75,7 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
     fun get(id:U) = interest[id]
 
 
-    override fun getRowCount(): Int =  interest.size()
+    override fun getRowCount(): Int =  if(interest.limit>0) Math.min(interest.size-interest.offset, interest.limit) else interest.size
     override fun getColumnCount(): Int = columns.size
     override fun getValueAt(rowIndex: Int, columnIndex: Int): Any? = colmap[columns[columnIndex]]!!.value(this[rowIndex])
 

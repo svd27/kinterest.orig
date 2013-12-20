@@ -3,6 +3,7 @@ package ch.passenger.kinterest
 import java.lang.reflect.Method
 import javax.persistence.Entity
 import java.util.regex.Pattern
+import com.fasterxml.jackson.databind.node.ObjectNode
 
 /**
  * Created by svd on 14/12/13.
@@ -149,6 +150,14 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
             override val relation: FilterRelations = FilterRelations.NOT
             override val target: Class<T> = this@FilterFactory.target
             override val kind: String = kind()
+        }
+    }
+
+    fun fromJson(json:ObjectNode) : ElementFilter<T,U> {
+        val sop = json["operator"]!!.textValue()!!
+        val op = FilterRelations.valueOf(sop)
+        when(op) {
+            is EQ ->
         }
     }
 }

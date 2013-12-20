@@ -32,6 +32,9 @@ import ch.passenger.kinterest.SortKey
 import ch.passenger.kinterest.SortDirection
 import java.util.ArrayList
 import ch.passenger.kinterest.oppositeSortDirection
+import javax.swing.JFormattedTextField
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 
 
 /**
@@ -53,7 +56,7 @@ Logger.getLogger("").setLevel(Level.FINE)
 
     boostrapDomain(Neo4jDbWrapper(db))
     val diaries = Universe.galaxy(javaClass<Diary>())!!
-    val users = Universe.galaxy(javaClass<User>())!!
+    val users = Universe.galaxy(javaClass<DiaryOwner>())!!
     val service = InterestService("users", users)
     val sdiary = InterestService("diaries", diaries)
 
@@ -70,21 +73,22 @@ Logger.getLogger("").setLevel(Level.FINE)
     uf.show()
 }
 
-class UserFrame(val users:InterestService<User,Long>) {
+class UserFrame(val users:InterestService<DiaryOwner,Long>) {
     val tfEmail = JTextField(22)
     val tfNick = JTextField(8)
+    val iuser = users.create("")
     fun show() {
         val fu = JFrame("Users")
         fu.getContentPane()!!.setLayout(BorderLayout())
-        val iuser = users.create("")
-        users.query(iuser, FilterFactory(javaClass<User>()).gte("id", 0.toLong()))
+
+        users.query(iuser, FilterFactory(javaClass<DiaryOwner>()).gte("id", 0.toLong()))
         val tbl = JTable(InterestTableModel(iuser, users))
         tbl.getTableHeader()?.addMouseListener(object : MouseAdapter() {
 
             override fun mouseClicked(e: MouseEvent) {
                 val add = e.isShiftDown()
                 val idx = tbl.convertColumnIndexToModel(tbl.columnAtPoint(e.getPoint()))
-                val m = tbl.getModel() as InterestTableModel<User,Long>
+                val m = tbl.getModel() as InterestTableModel<DiaryOwner,Long>
                 val col = m.columnAt(idx)
                 if(col!=null) {
                     if(!add) {
@@ -115,11 +119,12 @@ class UserFrame(val users:InterestService<User,Long>) {
         })
         val spu = JScrollPane(tbl)
         fu.getContentPane()!!.add(spu)
-        val south = Box.createHorizontalBox()!!
-        south.add(JLabel("Email:"))
-        south.add(tfEmail)
-        south.add(JLabel("Nick:"))
-        south.add(tfNick)
+        val south = Box.createVerticalBox()
+        val south1 = Box.createHorizontalBox()!!
+        south1.add(JLabel("Email:"))
+        south1.add(tfEmail)
+        south1.add(JLabel("Nick:"))
+        south1.add(tfNick)
         val create = object: AbstractAction("Create") {
 
             override fun actionPerformed(e: ActionEvent) {
@@ -131,9 +136,55 @@ class UserFrame(val users:InterestService<User,Long>) {
                 users.createElement(Jsonifier.valueMap(json, iuser.descriptor))
             }
         }
-        south.add(Box.createHorizontalGlue())
-        south.add(JButton(create))
+        south1.add(Box.createHorizontalGlue())
+        south1.add(JButton(create))
+        val south2 = Box.createHorizontalBox()!!
+        south2.add(JLabel("Page Size: "))
+        val tfPagesize = JFormattedTextField(iuser.limit)
+        tfPagesize.addFocusListener(object : FocusAdapter() {
+
+            override fun focusLost(e: FocusEvent) {
+                val v = (tfPagesize.getValue() as Number).toInt()
+                if(v==iuser.limit) return
+                if(v<1) {
+                    iuser.limit = 0
+                    iuser.offset = 0
+                } else {
+                    iuser.limit = v
+                    iuser.offset = 0
+                }
+            }
+        })
+        south2.add(tfPagesize)
+        val prev = object : AbstractAction("<") {
+
+            override fun actionPerformed(e: ActionEvent) {
+                iuser.offset = Math.max(iuser.offset-iuser.limit,0)
+            }
+        }
+        prev.setEnabled(false)
+        val next = object : AbstractAction(">") {
+
+            override fun actionPerformed(e: ActionEvent) {
+                iuser.offset = if(iuser.offset+iuser.limit>iuser.size) iuser.size-iuser.limit else iuser.offset+iuser.limit
+            }
+        }
+        next.setEnabled(false)
+        south2.add(JButton(prev))
+        south2.add(JButton(next))
+        south.add(south1)
+        south.add(south2)
         fu.getContentPane()?.add(south, BorderLayout.SOUTH)
+
+        tbl.getModel()?.addTableModelListener {
+            log.info("TME: sz: ${iuser.size} off: ${iuser.offset} lim: ${iuser.limit}")
+            if(iuser.offset+iuser.limit<=   iuser.size) {
+                next.setEnabled(true)
+            } else next.setEnabled(false)
+            if(iuser.offset>0) {
+                prev.setEnabled(true)
+            } else prev.setEnabled(false)
+        }
 
         fu.pack()
         fu.setVisible(true)
