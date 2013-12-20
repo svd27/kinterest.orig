@@ -161,4 +161,7 @@ class StaticFilter<T:LivingElement<U>,U:Hashable>(private val interest:Interest<
 }
 
 enum class SortDirection { ASC DESC }
+fun oppositeSortDirection(dir:SortDirection):SortDirection{
+    if(dir==SortDirection.ASC) return SortDirection.DESC else return SortDirection.ASC
+}
 class SortKey(val property:String,val direction:SortDirection)

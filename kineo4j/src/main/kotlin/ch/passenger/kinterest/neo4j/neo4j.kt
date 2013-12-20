@@ -63,6 +63,7 @@ import ch.passenger.kinterest.DomainObjectDescriptor
 import ch.passenger.kinterest.util.filter
 import org.neo4j.cypher.CypherExecutionException
 import org.neo4j.kernel.api.exceptions.schema.AlreadyIndexedException
+import rx.concurrency.ExecutorScheduler
 
 /**
  * Created by svd on 12/12/13.
@@ -177,7 +178,9 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
 
     }
 
-    override val observable: Observable<Event<U>> get() = subject
+    val exec = Executors.newFixedThreadPool(8)
+
+    override val observable: Observable<Event<U>> get() = subject.observeOn(ExecutorScheduler(exec))!!
 
     public fun  node(id: U, kind: String): Node? {
         val m = mapOf("oid" to id)
@@ -195,7 +198,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>> create(id: U, values: Map<String, Any>, descriptor: DomainObjectDescriptor<A, U>) {
+    override fun <A : LivingElement<U>> create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor<A, U>) {
         val um: MutableMap<String, Any?> = HashMap()
         values.entrySet().filter { descriptor.uniques.containsItem(it.key) }.map { it.key to it.value }.forEach { um.putAll(it) }
         val setter = values.entrySet().filter { !descriptor.uniques.containsItem(it.key) }.map { it.key }
@@ -207,7 +210,11 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
             RETURN n
             """;
             val m : MutableMap<String,Any> = HashMap()
-            m.putAll(values)
+            values.entrySet().forEach {
+                val v = it.value
+                if(v !=null) m[it.key] = v
+                else m[it.key] = "NULL"
+            }
             m["id"] = id
             log.info("execute $q $m")
             val res = engine.execute(q, m)!!
@@ -515,8 +522,8 @@ public fun Node.dump(): String {
 
 abstract class Neo4jDomainObject(val oid: Hashable, val store: Neo4jDatastore<*>, protected val kind: String, private val node: Node) : DomainObject {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject>())!!
-    protected fun<T> prop(name: String): T? = store.tx { node().getProperty(name) as T? }
-    protected fun<T> prop(name: String, value: T?): Unit = store.tx { node().setProperty(name, value) }
+    protected fun<T> prop(name: String): T? = store.tx { node().getProperty(if(name=="id") "ID" else name) as T? }
+    protected fun<T> prop(name: String, value: T?): Unit = store.tx { node().setProperty((if(name=="id") "ID" else name), value) }
 
     protected inline fun node(): Node = node
 

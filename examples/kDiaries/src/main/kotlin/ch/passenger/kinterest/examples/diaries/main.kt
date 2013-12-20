@@ -23,12 +23,21 @@ import ch.passenger.kinterest.Galaxy
 import java.util.logging.Logger
 import java.util.logging.Level
 import javax.swing.table.TableRowSorter
+import ch.passenger.kinterest.service.InterestService
+import com.fasterxml.jackson.databind.ObjectMapper
+import ch.passenger.kinterest.util.json.Jsonifier
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import ch.passenger.kinterest.SortKey
+import ch.passenger.kinterest.SortDirection
+import java.util.ArrayList
+import ch.passenger.kinterest.oppositeSortDirection
 
 
 /**
  * Created by svd on 16/12/13.
  */
-val log = LoggerFactory.getLogger("diaries")
+val log = LoggerFactory.getLogger("diaries")!!
 public fun main(args: Array<String>) {
     /*
 Logger.getLogger("").getHandlers().forEach {
@@ -45,29 +54,66 @@ Logger.getLogger("").setLevel(Level.FINE)
     boostrapDomain(Neo4jDbWrapper(db))
     val diaries = Universe.galaxy(javaClass<Diary>())!!
     val users = Universe.galaxy(javaClass<User>())!!
+    val service = InterestService("users", users)
+    val sdiary = InterestService("diaries", diaries)
 
     val f = JFrame("Diaries")
     f.getContentPane()!!.setLayout(BorderLayout())
-    val sp = JScrollPane(JTable(InterestTableModel(Interest("", javaClass<Diary>()))))
+    val sp = JScrollPane(JTable(InterestTableModel(Interest("", javaClass<Diary>()), sdiary)))
     f.getContentPane()!!.add(sp)
     f.pack()
     f.setVisible(true)
 
     log?.info("visible")
     //users.create(mapOf("email" to "svd@zzz.com" , "nick" to "svd"))
-    val uf = UserFrame(users)
+    val uf = UserFrame(service)
     uf.show()
 }
 
-class UserFrame(val users:Galaxy<User,Long>) {
+class UserFrame(val users:InterestService<User,Long>) {
     val tfEmail = JTextField(22)
     val tfNick = JTextField(8)
     fun show() {
         val fu = JFrame("Users")
         fu.getContentPane()!!.setLayout(BorderLayout())
-        val iuser = Universe.galaxy(javaClass<User>())?.interest()!!
-        iuser.filter = FilterFactory(javaClass<User>()).gte("id", 0.toLong())
-        val spu = JScrollPane(JTable(InterestTableModel(iuser)))
+        val iuser = users.create("")
+        users.query(iuser, FilterFactory(javaClass<User>()).gte("id", 0.toLong()))
+        val tbl = JTable(InterestTableModel(iuser, users))
+        tbl.getTableHeader()?.addMouseListener(object : MouseAdapter() {
+
+            override fun mouseClicked(e: MouseEvent) {
+                val add = e.isShiftDown()
+                val idx = tbl.convertColumnIndexToModel(tbl.columnAtPoint(e.getPoint()))
+                val m = tbl.getModel() as InterestTableModel<User,Long>
+                val col = m.columnAt(idx)
+                if(col!=null) {
+                    if(!add) {
+                        if(iuser.orderBy.size==1 && iuser.orderBy[0]?.property==col.property) {
+                            val sortDirection = iuser.orderBy[0].direction
+                            val nk = SortKey(col.property, if(sortDirection==SortDirection.ASC) SortDirection.DESC else SortDirection.ASC)
+                            iuser.orderBy = array(nk)
+                        } else {
+                            iuser.orderBy = array(SortKey(col.property, SortDirection.ASC))
+                        }
+                    } else {
+                        log.info("additive sort ${col.property}")
+                        val no = ArrayList<SortKey>()
+                        var found = false
+                        iuser.orderBy.forEach {
+                            if(it.property!=col.property) no.add(it)
+                            else {
+                                found = true
+                                log.info("turning direction ${col.property}")
+                                no.add(SortKey(it.property, oppositeSortDirection(it.direction)))
+                            }
+                        }
+                        if(!found) no.add(SortKey(col.property, SortDirection.ASC))
+                        iuser.orderBy = Array(no.size) {no[it]}
+                    }
+                }
+            }
+        })
+        val spu = JScrollPane(tbl)
         fu.getContentPane()!!.add(spu)
         val south = Box.createHorizontalBox()!!
         south.add(JLabel("Email:"))
@@ -77,8 +123,12 @@ class UserFrame(val users:Galaxy<User,Long>) {
         val create = object: AbstractAction("Create") {
 
             override fun actionPerformed(e: ActionEvent) {
+                val om = ObjectMapper()
+                val json = om.createObjectNode()!!
+                json.put("email", tfEmail.getText()?:"")
+                json.put("nick", tfNick.getText()?:"")
                 val props = mapOf("email" to (tfEmail.getText()?:""), "nick" to (tfNick.getText()?:""))
-                users.create(props)
+                users.createElement(Jsonifier.valueMap(json, iuser.descriptor))
             }
         }
         south.add(Box.createHorizontalGlue())
