@@ -12,7 +12,7 @@
         <version>0.1-SNAPSHOT</version>
     </parent>
 
-    <groupId>org.jetbrains.kotlin</groupId>
+    <groupId>ch.passenger.kinterest</groupId>
     <artifactId>jetty</artifactId>
     <version>0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
@@ -49,6 +49,10 @@
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-servlet</artifactId>
         </dependency>
-
+        <dependency>
+            <groupId>ch.passenger.kinterest</groupId>
+            <artifactId>core</artifactId>
+            <version>0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 </project>

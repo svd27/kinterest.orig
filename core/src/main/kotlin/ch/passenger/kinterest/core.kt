@@ -54,17 +54,18 @@ public enum class EventTypes {
 
 open class Event<U : Hashable>(public val sourceType: String, public val kind: EventTypes)
 open class ElementEvent<U : Hashable>(sourceType: String, public val id: U, kind: EventTypes) : Event<U>(sourceType, kind)
+open class InterestEvent<U : Hashable>(val interest:Int, sourceType: String, public val id: U, kind: EventTypes) : Event<U>(sourceType, kind)
 class UpdateEvent<U : Hashable, V>(sourceType: String, id: U, public val property: String, public val value: V?, public val old: V?)
 : ElementEvent<U>(sourceType, id, EventTypes.UPDATE)
 class CreateEvent<U : Hashable>(sourceType: String, id: U)
 : ElementEvent<U>(sourceType, id, EventTypes.CREATE)
-class AddEvent<U : Hashable>(sourceType: String, id: U)
-: ElementEvent<U>(sourceType, id, EventTypes.ADD)
-class RemoveEvent<U : Hashable>(sourceType: String, id: U)
-: ElementEvent<U>(sourceType, id, EventTypes.REMOVE)
+class AddEvent<U : Hashable>(interest:Int, sourceType: String, id: U)
+: InterestEvent<U>(interest, sourceType, id, EventTypes.ADD)
+class RemoveEvent<U : Hashable>(interest:Int, sourceType: String, id: U)
+: InterestEvent<U>(interest, sourceType, id, EventTypes.REMOVE)
 class DeleteEvent<U : Hashable>(sourceType: String, id: U)
 : ElementEvent<U>(sourceType, id, EventTypes.DELETE)
-class OrderEvent<U : Hashable>(sourceType: String, val order: Iterable<U>) : Event<U>(sourceType, EventTypes.ORDER)
+class OrderEvent<U : Hashable>(val interest:Int, sourceType: String, val order: Iterable<U>) : Event<U>(sourceType, EventTypes.ORDER)
 
 
 trait DataStore<T : Event<U>, U : Hashable> {
@@ -240,7 +241,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
         order.clear()
         del.forEach {
             order.remove(it)
-            subject.onNext(RemoveEvent(sourceType, it))
+            subject.onNext(RemoveEvent(id, sourceType, it))
         }
 
         log.info("$name: loading.... $offset->$limit")
@@ -248,7 +249,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
 
             override fun onCompleted() {
                 log.info("$name: loaded ${order.size}")
-                subject.onNext(OrderEvent(sourceType, ArrayList(order)))
+                subject.onNext(OrderEvent(id, sourceType, ArrayList(order)))
                 if (order.size == 0 && offset > 0) {
                     val off = Math.max(0, offset - limit)
                     if (offset != off) {
@@ -268,13 +269,13 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
 
     public fun add(t: T): Boolean {
         val res = order.add(t.id())
-        if (res) subject.onNext(AddEvent(sourceType, t.id()))
+        if (res) subject.onNext(AddEvent(id, sourceType, t.id()))
         return res
     }
 
     public fun remove(t: T): Boolean {
         val res = order.remove(t.id())
-        subject.onNext(RemoveEvent(sourceType, t.id()))
+        subject.onNext(RemoveEvent(id, sourceType, t.id()))
         return res
     }
 
@@ -292,7 +293,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
     private fun consumeDelete(e: DeleteEvent<U>) {
         if (order.remove(e.id)) {
             subject.onNext(e)
-            subject.onNext(RemoveEvent(sourceType, e.id))
+            subject.onNext(RemoveEvent(id, sourceType, e.id))
             load()
         }
     }
@@ -323,7 +324,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
             val ne = galaxy.get(e.id)
             if (ne != null && filter.accept(ne)) {
                 add(ne)
-                subject.onNext(AddEvent(sourceType, ne.id()))
+                subject.onNext(AddEvent(id, sourceType, ne.id()))
                 resort()
             }
         }
@@ -333,7 +334,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
         val no = order.sort(comparator)
         order.clear()
         order.addAll(no)
-        subject.onNext(OrderEvent(sourceType, order))
+        subject.onNext(OrderEvent(id, sourceType, order))
     }
 
     public fun get(id: U): T? = galaxy.get(id)
@@ -343,7 +344,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
     public fun indexOf(t: U): Int = order.indexOf(t)
 
     fun close() {
-
+        galaxy.interests.remove(id)
     }
 
     class object {

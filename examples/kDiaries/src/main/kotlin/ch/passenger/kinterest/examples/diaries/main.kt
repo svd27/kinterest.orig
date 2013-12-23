@@ -35,30 +35,66 @@ import ch.passenger.kinterest.oppositeSortDirection
 import javax.swing.JFormattedTextField
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
+import ch.passenger.kinterest.service.KIApplication
+import ch.passenger.kinterest.jetty.jetty
+import ch.passenger.kinterest.jetty.*
+import ch.passenger.kinterest.service.SimpleServiceDescriptor
+import ch.passenger.kinterest.service.KISession
+import ch.passenger.kinterest.service.KIPrincipal
 
 
 /**
  * Created by svd on 16/12/13.
  */
 val log = LoggerFactory.getLogger("diaries")!!
+
+val app = KIApplication("diaries", listOf(
+        SimpleServiceDescriptor(javaClass<InterestService<DiaryOwner,Long>>()) {
+            InterestService(Universe.galaxy(javaClass<DiaryOwner>())!!)
+        },
+        SimpleServiceDescriptor(javaClass<InterestService<Diary,Long>>()) {
+            InterestService(Universe.galaxy(javaClass<Diary>())!!)
+        }
+))
+
+val session = KISession(KIPrincipal.ANONYMOUS, app)
 public fun main(args: Array<String>) {
     /*
 Logger.getLogger("").getHandlers().forEach {
     it.setLevel(Level.FINE)
 }
-    Logger.getLogger("org.eclipse").setLevel(Level.INFO)
-Logger.getLogger("").setLevel(Level.FINE)
 */
+    Logger.getLogger("org.eclipse").setLevel(Level.FINE)
+//Logger.getLogger("").setLevel(Level.FINE)
+
     val db = org.neo4j.graphdb.factory.GraphDatabaseFactory().newEmbeddedDatabase("./neo/data")
     val api : GraphDatabaseAPI = db as GraphDatabaseAPI
     val srv = org.neo4j.server.WrappingNeoServer(api)
     srv.start()
 
     boostrapDomain(Neo4jDbWrapper(db))
+
+
+
+    jetty {
+        connectors {
+            array(serverConnector {
+                setPort(3333)
+            })
+        }
+
+        servlets {
+            AppServlet(app).init(this)
+        }
+    }.start()
+
+
+    session.current()
+
     val diaries = Universe.galaxy(javaClass<Diary>())!!
     val users = Universe.galaxy(javaClass<DiaryOwner>())!!
-    val service = InterestService("users", users)
-    val sdiary = InterestService("diaries", diaries)
+    val service = InterestService(users)
+    val sdiary = InterestService(diaries)
 
     val f = JFrame("Diaries")
     f.getContentPane()!!.setLayout(BorderLayout())
@@ -69,6 +105,7 @@ Logger.getLogger("").setLevel(Level.FINE)
 
     log?.info("visible")
     //users.create(mapOf("email" to "svd@zzz.com" , "nick" to "svd"))
+    session.current()
     val uf = UserFrame(service)
     uf.show()
 }
@@ -81,8 +118,9 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         val fu = JFrame("Users")
         fu.getContentPane()!!.setLayout(BorderLayout())
 
-        users.query(iuser, FilterFactory(javaClass<DiaryOwner>()).gte("id", 0.toLong()))
-        val tbl = JTable(InterestTableModel(iuser, users))
+        users.filter(iuser, FilterFactory(javaClass<DiaryOwner>()).gte("id", 0.toLong()).toJson())
+        val galaxy = Universe.galaxy(javaClass<DiaryOwner>())!!
+        val tbl = JTable(InterestTableModel(galaxy.interests[iuser]!!, users))
         tbl.getTableHeader()?.addMouseListener(object : MouseAdapter() {
 
             override fun mouseClicked(e: MouseEvent) {
@@ -91,28 +129,29 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
                 val m = tbl.getModel() as InterestTableModel<DiaryOwner,Long>
                 val col = m.columnAt(idx)
                 if(col!=null) {
+                    val ain = galaxy.interests[iuser]!!
                     if(!add) {
-                        if(iuser.orderBy.size==1 && iuser.orderBy[0]?.property==col.property) {
-                            val sortDirection = iuser.orderBy[0].direction
+                        if(ain.orderBy.size==1 && ain.orderBy[0]?.property==col.property) {
+                            val sortDirection = ain.orderBy[0].direction
                             val nk = SortKey(col.property, if(sortDirection==SortDirection.ASC) SortDirection.DESC else SortDirection.ASC)
-                            iuser.orderBy = array(nk)
+                            ain.orderBy = array(nk)
                         } else {
-                            iuser.orderBy = array(SortKey(col.property, SortDirection.ASC))
+                            ain.orderBy = array(SortKey(col.property, SortDirection.ASC))
                         }
                     } else {
                         log.info("additive sort ${col.property}")
                         val no = ArrayList<SortKey>()
                         var found = false
-                        iuser.orderBy.forEach {
+                        ain.orderBy.forEach {
                             if(it.property!=col.property) no.add(it)
                             else {
                                 found = true
                                 log.info("turning direction ${col.property}")
-                                no.add(SortKey(it.property, oppositeSortDirection(it.direction)))
+                                 no.add(SortKey(it.property, oppositeSortDirection(it.direction)))
                             }
                         }
                         if(!found) no.add(SortKey(col.property, SortDirection.ASC))
-                        iuser.orderBy = Array(no.size) {no[it]}
+                        ain.orderBy = Array(no.size) {no[it]}
                     }
                 }
             }
@@ -133,25 +172,25 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
                 json.put("email", tfEmail.getText()?:"")
                 json.put("nick", tfNick.getText()?:"")
                 val props = mapOf("email" to (tfEmail.getText()?:""), "nick" to (tfNick.getText()?:""))
-                users.createElement(Jsonifier.valueMap(json, iuser.descriptor))
+                users.createElement(props)
             }
         }
         south1.add(Box.createHorizontalGlue())
         south1.add(JButton(create))
         val south2 = Box.createHorizontalBox()!!
         south2.add(JLabel("Page Size: "))
-        val tfPagesize = JFormattedTextField(iuser.limit)
+        val tfPagesize = JFormattedTextField(0.toInt())
         tfPagesize.addFocusListener(object : FocusAdapter() {
 
             override fun focusLost(e: FocusEvent) {
                 val v = (tfPagesize.getValue() as Number).toInt()
-                if(v==iuser.limit) return
+
                 if(v<1) {
-                    iuser.limit = 0
-                    iuser.offset = 0
+                    users.buffer(iuser, 0)
+                    users.offset(iuser, 0)
                 } else {
-                    iuser.limit = v
-                    iuser.offset = 0
+                    users.buffer(iuser, v)
+                    users.offset(iuser, 0)
                 }
             }
         })
@@ -159,14 +198,16 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         val prev = object : AbstractAction("<") {
 
             override fun actionPerformed(e: ActionEvent) {
-                iuser.offset = Math.max(iuser.offset-iuser.limit,0)
+                val ain = galaxy.interests[iuser]!!
+                ain.offset = Math.max(ain.offset-ain.limit,0)
             }
         }
         prev.setEnabled(false)
         val next = object : AbstractAction(">") {
 
             override fun actionPerformed(e: ActionEvent) {
-                iuser.offset = if(iuser.offset+iuser.limit>iuser.size) iuser.size-iuser.limit else iuser.offset+iuser.limit
+                val ain = galaxy.interests[iuser]!!
+                ain.offset = if(ain.offset+ain.limit>ain.size) ain.size-ain.limit else ain.offset+ain.limit
             }
         }
         next.setEnabled(false)
@@ -177,11 +218,12 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         fu.getContentPane()?.add(south, BorderLayout.SOUTH)
 
         tbl.getModel()?.addTableModelListener {
-            log.info("TME: sz: ${iuser.size} off: ${iuser.offset} lim: ${iuser.limit}")
-            if(iuser.offset+iuser.limit<=   iuser.size) {
+            val ain = galaxy.interests[iuser]!!
+            log.info("TME: sz: ${ain.size} off: ${ain.offset} lim: ${ain.limit}")
+            if(ain.offset+ain.limit<=   ain.size) {
                 next.setEnabled(true)
             } else next.setEnabled(false)
-            if(iuser.offset>0) {
+            if(ain.offset>0) {
                 prev.setEnabled(true)
             } else prev.setEnabled(false)
         }

@@ -19,18 +19,18 @@ import org.slf4j.LoggerFactory
 private val log : Logger = LoggerFactory.getLogger(javaClass<KIWebsocketAdapter>().getPackage()!!.getName())!!
 
 abstract class KIWebsocketAdapter(protected val session : HttpSession?) : WebSocketAdapter() {
-    protected var wssession : Session? = null
-
+    protected var wssession : Session? = getSession()
 
     public fun send(text: String) {
-        logJetty.info("ep: ${wssession?.getRemote()} sending: $text")
-        wssession?.getRemote()?.sendStringByFuture(text)
+        logJetty.info("ep: ${getSession()?.getRemote()} sending: $text")
+        getSession()?.getRemote()?.sendStringByFuture(text)
     }
 }
 
 abstract class KIWebsocketServlet(val creator : WebSocketCreator) : WebSocketServlet() {
 
     public override fun configure(p0: WebSocketServletFactory?) {
+        log.info("WS: register creator $creator on $p0")
         p0?.setCreator(creator)
     }
 }

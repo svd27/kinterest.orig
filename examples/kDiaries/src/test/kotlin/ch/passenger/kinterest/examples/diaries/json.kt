@@ -35,7 +35,7 @@ class DiaryJsonTests {
         val guser = Universe.galaxy(javaClass<DiaryOwner>())!!
 
         val ff= FilterFactory<DiaryOwner,Long>(javaClass<DiaryOwner>())
-        val i1 = guser.interest("test")
+        val i1 = guser.interested("test")
         i1.filter = ff.gte("id", 0.toLong())
         val obs = object : Observer<ElementEvent<Long>> {
 
