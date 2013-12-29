@@ -208,7 +208,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>> create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor<A, U>) {
+    override fun create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor) {
         val um: MutableMap<String, Any?> = HashMap()
         values.entrySet().filter { descriptor.uniques.containsItem(it.key) }.map { it.key to it.value }.forEach { um.putAll(it) }
         val setter = values.entrySet().filter { !descriptor.uniques.containsItem(it.key) }.map { it.key }
@@ -279,7 +279,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         return el.getName()
     }
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor<A, U>) {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
         if (to == null) {
             deleteRelation(from, relation, desc)
             return
@@ -336,7 +336,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>> deleteRelation(from: A, relation: String, desc: DomainObjectDescriptor<A, U>) {
+    override fun <A : LivingElement<U>> deleteRelation(from: A, relation: String, desc: DomainObjectDescriptor) {
         val pars = mapOf("from" to from.id())
         val q =
                 """
@@ -355,7 +355,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor<A, U>): Observable<V> {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor): Observable<V> {
         val pars = mapOf("from" to from.id())
         val q =
                 """
@@ -370,7 +370,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor<A, U>) {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor) {
         val pars = mapOf("from" to from.id(), "to" to  to.id(), "optional" to true)
         val q =
                 """
@@ -385,7 +385,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor<A, U>) {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor) {
         val pars = mapOf("from" to from.id(), "to" to to.id())
         val q =
                 """
@@ -398,7 +398,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>> schema(cls: Class<A>, desc: DomainObjectDescriptor<A, U>) {
+    override fun  schema(cls: Class<*>, desc: DomainObjectDescriptor) {
         tx {
             val i = db.db.index()
             i?.nodeIndexNames()?.forEach {

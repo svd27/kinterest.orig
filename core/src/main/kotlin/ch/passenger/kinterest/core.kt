@@ -25,6 +25,13 @@ import javax.persistence.UniqueConstraint
 import ch.passenger.kinterest.annotations.Index
 import ch.passenger.kinterest.util.filter
 import java.lang.reflect.Modifier
+import ch.passenger.kinterest.service.EntityPublisher
+import java.util.concurrent.BlockingDeque
+import java.util.concurrent.LinkedBlockingDeque
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import javax.persistence.OneToMany
 
 /**
  * Created by svd on 11/12/13.
@@ -44,6 +51,8 @@ trait LivingElement<T : Hashable> {
 
     protected val subject: PublishSubject<UpdateEvent<T, Any?>> [Transient] get
     val observable: Observable<UpdateEvent<T, Any?>> [Transient] get() = subject
+    fun galaxy() : Galaxy<out LivingElement<T>,out T>
+    fun descriptor() : DomainObjectDescriptor
 }
 
 
@@ -76,16 +85,16 @@ trait DataStore<T : Event<U>, U : Hashable> {
      */
     fun<V : Hashable> createRelation(fromKind: String, from: U, toKind: String, to: V, relation: String, optional: Boolean)
     fun<V : Hashable> findRelation(fromKind: String, from: U, toKind: String, relation: String): V?
-    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor<A, U>)
-    fun<A : LivingElement<U>> deleteRelation(from: A, relation: String, desc: DomainObjectDescriptor<A, U>)
-    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor<A, U>): Observable<V>
-    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor<A, U>)
-    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor<A, U>)
+    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor)
+    fun<A : LivingElement<U>> deleteRelation(from: A, relation: String, desc: DomainObjectDescriptor)
+    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor): Observable<V>
+    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor)
+    fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor)
     /**
      * should be called by any galaxy during init to ensure proper schema init (constraints, indices, etc)
      */
-    fun<A : LivingElement<U>> schema(cls: Class<A>, desc: DomainObjectDescriptor<A, U>)
-    fun<A : LivingElement<U>> create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor<A, U>)
+    fun schema(cls: Class<*>, desc: DomainObjectDescriptor)
+    fun create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor)
 }
 
 trait DomainObject {
@@ -93,7 +102,7 @@ trait DomainObject {
     fun set(p: String, value: Any?): Unit
 }
 
-class DomainObjectDescriptor<T : LivingElement<U>, U : Hashable>(val cls: Class<T>) {
+class DomainObjectDescriptor(val cls: Class<*>) {
     public val entity: String = cls.entityName();
     public val uniques: Iterable<String> = cls.getMethods().filter {
         it.unique()
@@ -106,7 +115,7 @@ class DomainObjectDescriptor<T : LivingElement<U>, U : Hashable>(val cls: Class<
     {
         cls.getMethods().filter {
             !Modifier.isStatic(it.getModifiers()) && !Modifier.isPrivate(it.getModifiers())
-            && !it.transient() && !it.getName()!!.startsWith("set") && it.getReturnType() != javaClass<Void>() && it.getName() != "id"
+            && !it.transient() && (it.getName()!!.startsWith("get") || it.getName()!!.startsWith("is")) && it.getReturnType() != javaClass<Void>()
             && it.getParameterTypes()?.size?:1 == 0
         }.forEach {
             getters[it.propertyName()] = it
@@ -121,11 +130,11 @@ class DomainObjectDescriptor<T : LivingElement<U>, U : Hashable>(val cls: Class<
 
     public val properties: Iterable<String> = getters.keySet()
 
-    public fun set(target: T, prop: String, value: Any?) {
+    public fun set(target: Any, prop: String, value: Any?) {
         setters[prop]!!.invoke(target, value)
     }
 
-    public fun get(target: T, prop: String): Any? {
+    public fun get(target: Any, prop: String): Any? {
         try {
             return getters[prop]!!invoke(target)
         } catch(e: Exception) {
@@ -134,18 +143,19 @@ class DomainObjectDescriptor<T : LivingElement<U>, U : Hashable>(val cls: Class<
         }
     }
 
-    public val descriptors: Map<String, DomainPropertyDescriptor<T, U>>
+    public val descriptors: Map<String, DomainPropertyDescriptor>
 
     {
-        val m: MutableMap<String, DomainPropertyDescriptor<T, U>> = HashMap()
+        val m: MutableMap<String, DomainPropertyDescriptor> = HashMap()
         getters.entrySet().forEach {
-            m[it.key] = DomainPropertyDescriptor(it.key, it.value)
+            val setter = setters[it.key]
+            m[it.key] = DomainPropertyDescriptor(it.key, it.value, setter)
         }
         descriptors = m
     }
 }
 
-class DomainPropertyDescriptor<T : LivingElement<U>, U : Hashable>(val property: String, val getter: Method) {
+class DomainPropertyDescriptor(val property: String, val getter: Method, val setter : Method?) {
     val classOf: Class<*> = getter.getReturnType()!!
     val relation: Boolean = getter.relation()
     val linkType: Class<*>?;
@@ -205,7 +215,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
         load()
     }
     private val galaxy = ch.passenger.kinterest.Universe.galaxy<T, U>(target)!!
-    public val descriptor: DomainObjectDescriptor<T, U> = galaxy.descriptor
+    public val descriptor: DomainObjectDescriptor = galaxy.descriptor
     protected val order: MutableList<U> = ArrayList()
     protected val subject: PublishSubject<Event<U>> = PublishSubject.create()!!
     public val observable: Observable<Event<U>> = subject
@@ -311,18 +321,23 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
 
     private fun consumeUpdate(e: UpdateEvent<U, *>) {
         val idx = order.indexOf(e.id)
+        log.info("interest: $sourceType.$id consume: $e idx: $idx")
         if (idx >= 0) {
-            val el = this[e.id]
+            val el = at(idx)
+            log.info("UPD: $el")
             if (el == null) return
             if (!filter.accept(el)) {
+                log.info("${sourceType}.${e.id} removed coz filter rejects")
                 remove(el)
             } else {
+                log.info("${sourceType}.${e.id} propagate and sort")
                 subject.onNext(e)
                 resort()
             }
         } else {
             val ne = galaxy.get(e.id)
             if (ne != null && filter.accept(ne)) {
+                log.info("${sourceType}.${e.id} adding coz filter says so")
                 add(ne)
                 subject.onNext(AddEvent(id, sourceType, ne.id()))
                 resort()
@@ -357,6 +372,10 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
 object Universe {
     private val galaxies: MutableMap<Class<*>, Any> = HashMap()
 
+    public fun starmap() : Iterable<DomainObjectDescriptor> {
+        return galaxies.values().map { (it as Galaxy<*,*>).descriptor }
+    }
+
     public fun<T : LivingElement<U>, U : Hashable> galaxy(target: Class<T>): Galaxy<T, U>? {
         return galaxies[target] as Galaxy<T, U>?
     }
@@ -373,8 +392,12 @@ object Universe {
 }
 
 
+class Retriever<U:Hashable>(val ids:Iterable<U>, val publisher:EntityPublisher)
+
 abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<T>, val store: DataStore<Event<U>, U>) {
-    public val descriptor: DomainObjectDescriptor<T, U> = DomainObjectDescriptor(sourceType)
+    public val descriptor: DomainObjectDescriptor = DomainObjectDescriptor(sourceType)
+    val retrievers : BlockingDeque<Retriever<U>> = LinkedBlockingDeque()
+    val hasso : ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     val heaven: MutableMap<U, T> = WeakHashMap()
     val interests: MutableMap<Int,Interest<T, U>> = WeakHashMap()
     val kind: String;
@@ -426,6 +449,14 @@ abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<
             }
             if (e is ElementEvent<U>) interests.values().forEach { it.consume(e) }
         }
+        val call = {() -> val drain : MutableList<Retriever<U>> = ArrayList();
+            drain.add(retrievers.take())
+            retrievers.drainTo(drain);
+            log.info("hasso woke up: $drain")
+            log.info("$kind retrieving ${drain.size} items")
+            drain.forEach { val obo = it.publisher; obo.publish(it.ids.map { this@Galaxy.get(it) }.filterNotNull() as List<LivingElement<Hashable>>) }
+        }
+        hasso.scheduleAtFixedRate(call, 100, 100, TimeUnit.MILLISECONDS)
     }
 
     public fun interested(name: String = ""): Interest<T, U> {
@@ -445,8 +476,12 @@ abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<
 
     public fun get(id: U): T? {
         var t: T? = heaven[id]
-        if (t == null) return retrieve(id)
+        if (t == null) {val el = retrieve(id); if(el!=null) heaven[id] = el; t = el}
         return t
+    }
+
+    public fun retriever(ids:Iterable<U>, obo:EntityPublisher) {
+        retrievers.offer(Retriever(ids, obo))
     }
 
     abstract protected fun retrieve(id: U): T?
@@ -477,19 +512,21 @@ abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<
     val filterFactory : FilterFactory<T,U> = FilterFactory(sourceType)
 }
 
-fun<T : LivingElement<U>, U : Hashable> Class<T>.entityName(): String {
+fun Class<*>.entityName(): String {
     val ann = getAnnotation(javaClass<Entity>())
     if (ann != null && ann.name() != null && ann.name().isNotEmpty()) return ann.name()!!
     return getName()
 }
 
-fun Method.unique(): Boolean = getAnnotation(javaClass<UniqueConstraint>()) != null
-fun Method.index(): Boolean = getAnnotation(javaClass<Index>()) != null
-fun Method.transient(): Boolean = getAnnotation(javaClass<Transient>()) != null
-fun Method.relation(): Boolean = getAnnotation(javaClass<OneToOne>()) != null
-fun Method.relTarget(): Class<*> = getAnnotation(javaClass<OneToOne>())!!.targetEntity()!!
+public fun Method.unique(): Boolean = getAnnotation(javaClass<UniqueConstraint>()) != null
+public fun Method.nullable(): Boolean = getAnnotation(javaClass<Nullable>()) != null
+public fun Method.index(): Boolean = getAnnotation(javaClass<Index>()) != null
+public fun Method.transient(): Boolean = getAnnotation(javaClass<Transient>()) != null
+public fun Method.relation(): Boolean = getAnnotation(javaClass<OneToOne>()) != null
+public fun Method.relTarget(): Class<*> = getAnnotation(javaClass<OneToOne>())!!.targetEntity()!!
+public fun Method.interest() : Boolean = getAnnotation(javaClass<OneToMany>()) != null
 
-fun Method.propertyName(): String {
+public fun Method.propertyName(): String {
     val mn = getName()!!
     if ((mn.startsWith("set") || mn.startsWith("get")) && mn.length > 3) return mn.substring(3).decapitalize()
     if (mn.startsWith("is") && getReturnType()!!.isAssignableFrom(javaClass<Boolean>()) && mn.length > 2) return mn.substring(2).decapitalize()

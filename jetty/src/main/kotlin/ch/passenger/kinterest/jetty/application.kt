@@ -32,6 +32,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.InputStream
+import ch.passenger.kinterest.service.EntityPublisher
+import ch.passenger.kinterest.LivingElement
+import ch.passenger.kinterest.util.json.Jsonifier
+import ch.passenger.kinterest.Universe
+import javax.persistence.Entity
+import ch.passenger.kinterest.nullable
+import ch.passenger.kinterest.unique
+
 
 /**
  * Created by svd on 21/12/2013.
@@ -86,12 +94,28 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
 }
 
 
-class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http) {
+class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPublisher {
     val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
+    val om = ObjectMapper()
     override fun onWebSocketText(message: String?) {
         log.info(message)
     }
 
+
+    override fun onWebSocketConnect(sess: Session?) {
+        super<KIWebsocketAdapter>.onWebSocketConnect(sess)
+        log.info("ENTITIES CONNECT: $sess")
+        kisession.entities = this
+    }
+    override fun publish(entities: Iterable<out LivingElement<out Hashable>>) {
+        val ja = om.createArrayNode()!!
+
+        entities.map { Jsonifier.jsonify(it, it.descriptor(), it.descriptor().properties) }.filterNotNull().forEach { ja.add(it) }
+
+        //val jsonNode = om.valueToTree<JsonNode>(entities)
+        log.info("publish $ja")
+        getSession()?.getRemote()?.sendStringByFuture(ja!!.toString())
+    }
 }
 
 
@@ -125,6 +149,31 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
         on.put("application", app.name)
         on.put("session", KISession.current()?.id)
         on.put("principal", KISession.current()?.principal?.principal)
+        val starmap = om.createArrayNode()!!
+        Universe.starmap().forEach {
+            val entity = om.createObjectNode()!!
+            entity.put("entity", it.entity)
+            val pa = om.createArrayNode()!!
+            it.properties.forEach {
+                p -> val pd = it.descriptors[p]!!
+                val pn = om.createObjectNode()!!
+                pn.put("property", p)
+                pn.put("relation", pd.relation)
+                if(pd.relation) {
+                    val ann = pd.classOf.getAnnotation(javaClass<Entity>())
+                    pn.put("entity", ann?.name())
+                } else {
+                    pn.put("type", pd.getter.getReturnType()?.getName())
+                }
+                pn.put("nullable", pd.getter.nullable())
+                pn.put("unique", pd.getter.unique())
+                pn.put("readonly", pd.setter==null)
+                pa.add(pn)
+            }
+            entity.put("properties", pa)
+            starmap.add(entity)
+        }
+        on.put("starmap", starmap)
         resp.getWriter()?.write(on.toString()!!)
         resp.getWriter()?.flush()
         resp.getWriter()?.close()
@@ -134,6 +183,9 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
 class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : KIServlet(app) {
     val patCrt = Pattern.compile("/create/([A-Za-z]+)")
     val patFilter = Pattern.compile("/filter/([0-9]+)")
+    val patBuffer = Pattern.compile("([0-9]+)/offset/([0-9]+)/buffer/([0-9]+)")
+    val patSave = Pattern.compile("/save/([0-9]+)")
+
 
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
@@ -178,6 +230,28 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
         resp.setHeader("Access-Control-Allow-Origin", "*")
 
         val path = req.getPathInfo()!!
+        if(path=="/retrieve") {
+            val ips = req.getInputStream()!!
+            val f = read(ips)
+            log.info("RETRIEVE: $f")
+
+            val on = om.readTree(f)
+            when(on) {
+                is ArrayNode -> {val ses = KISession.current();
+                    if(ses!=null) {
+                        val pub = ses.entities
+                        if(pub!=null)
+                        service.galaxy.retriever(on.map { it.longValue() }, pub)
+                        else {
+                            val context = IllegalStateException("exception to support tracking")
+                            log.warn("retrieval request with no defined publisher", context)}
+                    } else throw IllegalStateException("no session found")
+                }
+                else -> throw IllegalStateException("cant parse $f")
+            }
+            ack(resp)
+            return
+        }
         val mf = patFilter.matcher(path)
         if (mf.matches()) {
             val sint = mf.group(1)!!
@@ -189,9 +263,28 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
 
             val on = om.readTree(f)
             service.filter(id, on as ObjectNode)
-            resp.getWriter()?.print("{response: 'ok'}")
-            resp.flushBuffer()
-        } else throw IllegalArgumentException("unknown POST: $path")
+            ack(resp)
+            return
+        }
+        val ms = patSave.matcher(path)
+        if(ms.matches()) {
+            service.save(om.readTree(read(req.getInputStream()!!))!! as ObjectNode)
+            ack(resp)
+            return
+        }
+        val mb = patBuffer.matcher(path)
+        if(mb.matches()) {
+            val interest : Int = Integer.parseInt(mb.group(1)!!)
+            val off : Int = Integer.parseInt(mb.group(2)!!)
+            val buffer : Int = Integer.parseInt(mb.group(3)!!)
+
+            service.buffer(interest, buffer)
+            service.offset(interest, off)
+            ack(resp)
+            return
+        }
+
+        throw IllegalArgumentException("unknown POST: $path")
     }
 
 
@@ -232,6 +325,11 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
         currentApp.set(app)
         s.current()
         super.service(req, resp)
+    }
+
+    protected fun ack(resp:HttpServletResponse) {
+        resp.getWriter()?.write("{response: 'ok'}")
+        resp.flushBuffer()
     }
 
     protected fun app(s: HttpSession): KIApplication? = s.getAttribute(APPLICATION_KEY) as KIApplication

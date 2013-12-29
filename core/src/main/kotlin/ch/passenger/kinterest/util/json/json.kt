@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory
 public object Jsonifier {
     private val log = LoggerFactory.getLogger(this.javaClass)!!
     val om : ObjectMapper = ObjectMapper()
-    fun<T:LivingElement<U>,U:Hashable> jsonify( value:T,  desc:DomainObjectDescriptor<T,U>, vararg props:String) : ObjectNode {
+    fun jsonify( value:LivingElement<*>,  desc:DomainObjectDescriptor, props:Iterable<String>) : ObjectNode {
         val json = om.createObjectNode()!!
         json.put("entity", desc.entity)
         val id = value.id()
@@ -54,7 +54,7 @@ public object Jsonifier {
         return json["id"]!!.longValue()
     }
 
-    public fun<T:LivingElement<U>,U:Hashable> valueMap(entityNode:ObjectNode, desc:DomainObjectDescriptor<T,U>) : Map<String,Any?> {
+    public fun valueMap(entityNode:ObjectNode, desc:DomainObjectDescriptor) : Map<String,Any?> {
         val m : MutableMap<String,Any?> = HashMap()
         val json = entityNode.get("values")!!
         json.fieldNames()!!.filter { it!="id" }!!.forEach {

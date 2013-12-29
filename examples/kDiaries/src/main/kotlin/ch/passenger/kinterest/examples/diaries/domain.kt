@@ -30,6 +30,8 @@ trait DiaryDayEntry : LivingElement<Long> {
     Id
     override fun id(): Long
     var title : String
+    val created : Date [DefaultValue("java.util.Date()")] get
+    var dated : Date [DefaultValue("java.util.Date()")] get
 }
 
 Entity(name="DiaryOwner")

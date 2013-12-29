@@ -59,7 +59,6 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
                     }
                 }
                 else -> {
-                    if(it is ElementEvent<U>) println(Jsonifier.jsonify<T,U>(interest.get(it.id)!!, interest.descriptor).toString())
                     fireTableDataChanged()
                 }
             }
@@ -87,7 +86,7 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
 
     override fun setValueAt(aValue: Any?, rowIndex: Int, columnIndex: Int) {
         val col = column(columns[columnIndex])!!
-        val json = Jsonifier.jsonify(interest.at(rowIndex)!!, interest.descriptor, col.property)
+        val json = Jsonifier.jsonify(interest.at(rowIndex)!!, interest.descriptor, listOf(col.property))
         Jsonifier.setValue(json.get("values") as ObjectNode, col.property, aValue)
         service.save(json)
         //col?.setter?.invoke(get(rowIndex), aValue)

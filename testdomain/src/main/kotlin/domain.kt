@@ -1,9 +1,15 @@
 //Generated: 2013-12-16T09:14:33.304+01:00
+import ch.passenger.kinterest.LivingElement
+import ch.passenger.kinterest.Galaxy
+import ch.passenger.kinterest.DomainObjectDescriptor
+
 class TestAImpl(val id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject(id, store, TestAImpl.kind,node), ch.passenger.kinterest.testdomain.TestA, ch.passenger.kinterest.LivingElement<Long> {
   override fun id() : Long = id
   override protected val subject = subject()
-  
-override var ami : String?
+
+    override fun galaxy(): Galaxy<out LivingElement<Long>, out Long> = TestAImpl.galaxy
+    override fun descriptor(): DomainObjectDescriptor = galaxy().descriptor
+    override var ami : String?
 get() = prop("ami")
 set(v) = prop("ami", v)
 override var lots : Double
@@ -63,7 +69,10 @@ public fun boostrapTestA(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 class TestBImpl(val id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject(id, store, TestBImpl.kind,node), ch.passenger.kinterest.testdomain.TestB, ch.passenger.kinterest.LivingElement<Long> {
   override fun id() : Long = id
   override protected val subject = subject()
-  
+    override fun galaxy(): Galaxy<out LivingElement<Long>, out Long> = TestBImpl.galaxy
+    override fun descriptor(): DomainObjectDescriptor = galaxy().descriptor
+
+
 override val weight : Double
 get() = prop("weight")!!
 override val name : String

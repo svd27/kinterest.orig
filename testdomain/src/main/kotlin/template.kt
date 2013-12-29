@@ -1,3 +1,5 @@
+package testdomain
+
 import ch.passenger.kinterest.neo4j.Neo4jDatastore
 import org.neo4j.graphdb.Node
 import ch.passenger.kinterest.testdomain.TestA

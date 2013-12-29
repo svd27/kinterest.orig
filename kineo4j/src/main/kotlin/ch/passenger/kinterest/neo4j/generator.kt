@@ -214,6 +214,10 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
 class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<${id!!.kind}>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject(id, store, ${cn}Impl.kind,node), ${cls.getName()}, ch.passenger.kinterest.LivingElement<${id!!.kind}> {
   override fun id() : ${id!!.kind} = id
   override protected [Transient] val subject = subject()
+  override  fun galaxy(): ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> = ${cn}Impl.galaxy
+
+
+  override fun descriptor(): ch.passenger.kinterest.DomainObjectDescriptor = galaxy().descriptor
   $body
 
   class object {

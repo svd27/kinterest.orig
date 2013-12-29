@@ -67,15 +67,29 @@ abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>,
             if(method==null) throw IllegalStateException()
         }
         val current = method?.invoke(element) as V
-        return compare(current)
+        var av : Number? = null
+
+        //TODO: this kinda casting is really crappy,
+        //neccessary coz filters come in via json so proper casting isnt done
+        if(current is Number) {
+            when(current) {
+                is Double -> av = (value as Number).toDouble()
+                is Float -> av = (value as Number).toFloat()
+                is Int -> av = (value as Number).toInt()
+                is Short -> av = (value as Number).toShort()
+                is Long -> av = (value as Number).toLong()
+            }
+        }
+
+        return compare(current, if(av!=null) av else value)
     }
 
-    protected abstract fun compare(current:V) : Boolean
+    protected abstract fun compare(current:V, value:Any?) : Boolean
 
     private class EQ<T,U:Hashable,V:Comparable<V>>(target:Class<T>,property:String, value:V) : PropertyFilter<T,U,V>(target,property, value) where T:LivingElement<U>  {
         override val relation: FilterRelations = FilterRelations.EQ
 
-        override fun compare(current: V): Boolean = current==value
+        override fun compare(current: V, v:Any?): Boolean = current==v
     }
 
 
@@ -94,8 +108,9 @@ abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>,
 
 class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U> {
     fun<V:Comparable<V>> neq(property:String, value:V) : PropertyFilter<T,U,V> {
+        val n : jet.Number
         return binrel<V>(property, value, FilterRelations.NEQ) {
-            (e,v) -> e!=v
+            (e,v) -> if(v==null) false else e.compareTo(v!! as V) != 0
         }
     }
     fun<V:Comparable<V>> eq(property:String, value:V) : PropertyFilter<T,U,V> {
@@ -104,32 +119,32 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
 
     fun<V:Comparable<V>> lt(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.LT) {
-            (e,v) -> e<v
+            (e,v) -> e<(v as V)
         }
     }
 
     fun<V:Comparable<V>> gt(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.GT) {
-            (e,v) -> e>v
+            (e,v) -> e>(v as V)
         }
     }
 
     fun<V:Comparable<V>> lte(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.LTE) {
-            (e,v) -> e<=v
+            (e,v) -> e<=(v as V)
         }
     }
 
     fun<V:Comparable<V>> gte(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.GTE) {
-            (e,v) -> e>=v
+            (e,v) -> e.compareTo((v as V)) >= 0
         }
     }
 
     fun like(property:String, value:String) : PropertyFilter<T,U,String> {
         return object : PropertyFilter<T,U,String>(target, property, value) {
             val pat = Pattern.compile(value);
-            override fun compare(e:String) = pat.matcher(e).matches()
+            override fun compare(e:String,v:Any?) = pat.matcher(e).matches()
 
             override val relation: FilterRelations = FilterRelations.LIKE
         }
@@ -138,7 +153,7 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
     fun notlike(property:String, value:String) : PropertyFilter<T,U,String> {
         return object : PropertyFilter<T,U,String>(target, property, value) {
             val pat = Pattern.compile(value);
-            override fun compare(e:String) = !pat.matcher(e).matches()
+            override fun compare(e:String,v:Any?) = !pat.matcher(e).matches()
 
             override val relation: FilterRelations = FilterRelations.NOTLIKE
         }
@@ -167,9 +182,9 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
         }
     }
 
-    fun binrel<V:Comparable<V>>(p:String, v:V, rel:FilterRelations,filter:(e:V,v:V)->Boolean) : PropertyFilter<T,U,V> {
+    fun binrel<V:Comparable<V>>(p:String, v:V, rel:FilterRelations,filter:(e:V,v:Any?)->Boolean) : PropertyFilter<T,U,V> {
         return object : PropertyFilter<T,U,V>(target, p, v) {
-            override fun compare(e:V) = filter(e,v)
+            override fun compare(e:V,av:Any?) = filter(e,av)
 
             override val relation: FilterRelations = rel
         }
