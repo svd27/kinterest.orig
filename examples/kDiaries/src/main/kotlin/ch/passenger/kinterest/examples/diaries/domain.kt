@@ -34,12 +34,19 @@ trait DiaryDayEntry : LivingElement<Long> {
     var dated : Date [DefaultValue("java.util.Date()")] get
 }
 
+enum class OwnerState {
+    ONLINE OFFLINE
+}
+
 Entity(name="DiaryOwner")
 trait DiaryOwner : LivingElement<Long> {
     Id
     override fun id(): Long
     val email : String [UniqueConstraint] get
     var nick : String [Index] get
-
+    var birthdate : Date?
+    var state : OwnerState
+    var height : Double
+    val strength : Int
 }
 

@@ -10,10 +10,10 @@ class TestAImpl(val id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<L
     override fun galaxy(): Galaxy<out LivingElement<Long>, out Long> = TestAImpl.galaxy
     override fun descriptor(): DomainObjectDescriptor = galaxy().descriptor
     override var ami : String?
-get() = prop("ami")
+get() = prop("ami", javaClass<String>())
 set(v) = prop("ami", v)
 override var lots : Double
-get() = prop("lots")!!
+get() = prop("lots", javaClass<Double>())!!
 set(v) = prop("lots", v)
 override val weight : ch.passenger.kinterest.testdomain.TestB?
                 get() {
@@ -22,15 +22,15 @@ override val weight : ch.passenger.kinterest.testdomain.TestB?
                  return null
                 }
 override var mustbeset : Double
-get() = prop("mustbeset")!!
+get() = prop("mustbeset", javaClass<Double>())!!
 set(v) = prop("mustbeset", v)
 override val name : String
-get() = prop("name")!!
+get() = prop("name", javaClass<String>())!!
                   override val optionalWeights : ch.passenger.kinterest.Interest<ch.passenger.kinterest.testdomain.TestB,Long> =
                   ch.passenger.kinterest.Interest<ch.passenger.kinterest.testdomain.TestB,Long>("", javaClass<ch.passenger.kinterest.testdomain.TestB>())
                 
 override var options : String
-get() = prop("options")!!
+get() = prop("options", javaClass<String>())!!
 set(v) = prop("options", v)
         public fun equals(o :Any?) : Boolean {
         return when(o) {
@@ -74,11 +74,11 @@ class TestBImpl(val id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<L
 
 
 override val weight : Double
-get() = prop("weight")!!
+get() = prop("weight", javaClass<Double>())!!
 override val name : String
-get() = prop("name")!!
+get() = prop("name", javaClass<String>())!!
 override val comment : String?
-get() = prop("comment")
+get() = prop("comment", javaClass<String>())
         public fun equals(o :Any?) : Boolean {
         return when(o) {
             is ch.passenger.kinterest.testdomain.TestB ->  id().equals(o.id())

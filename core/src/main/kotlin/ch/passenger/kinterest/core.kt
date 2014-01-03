@@ -32,6 +32,9 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.persistence.OneToMany
+import java.util.Date
+import java.text.SimpleDateFormat
+import ch.passenger.kinterest.util.json.EnumDecoder
 
 /**
  * Created by svd on 11/12/13.
@@ -51,30 +54,31 @@ trait LivingElement<T : Hashable> {
 
     protected val subject: PublishSubject<UpdateEvent<T, Any?>> [Transient] get
     val observable: Observable<UpdateEvent<T, Any?>> [Transient] get() = subject
-    fun galaxy() : Galaxy<out LivingElement<T>,out T>
-    fun descriptor() : DomainObjectDescriptor
+    fun galaxy(): Galaxy<out LivingElement<T>, out T>
+    fun descriptor(): DomainObjectDescriptor
 }
 
 
 
 public enum class EventTypes {
-    CREATE ADD DELETE REMOVE UPDATE ORDER
+    CREATE ADD DELETE REMOVE UPDATE ORDER INTEREST
 }
 
 open class Event<U : Hashable>(public val sourceType: String, public val kind: EventTypes)
 open class ElementEvent<U : Hashable>(sourceType: String, public val id: U, kind: EventTypes) : Event<U>(sourceType, kind)
-open class InterestEvent<U : Hashable>(val interest:Int, sourceType: String, public val id: U, kind: EventTypes) : Event<U>(sourceType, kind)
+open class InterestEvent<U : Hashable>(val interest: Int, sourceType: String, public val id: U, kind: EventTypes) : Event<U>(sourceType, kind)
 class UpdateEvent<U : Hashable, V>(sourceType: String, id: U, public val property: String, public val value: V?, public val old: V?)
 : ElementEvent<U>(sourceType, id, EventTypes.UPDATE)
 class CreateEvent<U : Hashable>(sourceType: String, id: U)
 : ElementEvent<U>(sourceType, id, EventTypes.CREATE)
-class AddEvent<U : Hashable>(interest:Int, sourceType: String, id: U)
+class AddEvent<U : Hashable>(interest: Int, sourceType: String, id: U)
 : InterestEvent<U>(interest, sourceType, id, EventTypes.ADD)
-class RemoveEvent<U : Hashable>(interest:Int, sourceType: String, id: U)
+class RemoveEvent<U : Hashable>(interest: Int, sourceType: String, id: U)
 : InterestEvent<U>(interest, sourceType, id, EventTypes.REMOVE)
 class DeleteEvent<U : Hashable>(sourceType: String, id: U)
 : ElementEvent<U>(sourceType, id, EventTypes.DELETE)
-class OrderEvent<U : Hashable>(val interest:Int, sourceType: String, val order: Iterable<U>) : Event<U>(sourceType, EventTypes.ORDER)
+class OrderEvent<U : Hashable>(val interest: Int, sourceType: String, val order: Iterable<U>) : Event<U>(sourceType, EventTypes.ORDER)
+class InterestConfigEvent<U:Hashable>(sourceType:String, val interest:Int, val size:Int, val offset:Int, val limit:Int, val orderBy:Array<SortKey>) : Event<U>(sourceType, EventTypes.INTEREST)
 
 
 trait DataStore<T : Event<U>, U : Hashable> {
@@ -98,8 +102,8 @@ trait DataStore<T : Event<U>, U : Hashable> {
 }
 
 trait DomainObject {
-    fun get(p: String): Any?
-    fun set(p: String, value: Any?): Unit
+    fun get(p: String, pd:DomainPropertyDescriptor): Any?
+    fun set(p: String, pd:DomainPropertyDescriptor, value: Any?): Unit
 }
 
 class DomainObjectDescriptor(val cls: Class<*>) {
@@ -155,9 +159,11 @@ class DomainObjectDescriptor(val cls: Class<*>) {
     }
 }
 
-class DomainPropertyDescriptor(val property: String, val getter: Method, val setter : Method?) {
+class DomainPropertyDescriptor(val property: String, val getter: Method, val setter: Method?) {
     val classOf: Class<*> = getter.getReturnType()!!
     val relation: Boolean = getter.relation()
+    val enum : Boolean = getter.getReturnType()!!.isEnum()
+
     val linkType: Class<*>?;
     {
         if (relation) {
@@ -168,26 +174,73 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
         }
 
     }
+
+    fun enumValues() : List<String> {
+        if(!enum) return ArrayList(0)
+
+        return EnumDecoder.values(classOf)!!.map { it.name() }
+    }
+
+    private val neoDate = SimpleDateFormat("yyyyMMddHHmmssSSS")
+
+    fun fromDataStore(v:Any?) : Any? {
+        if(v == null) return v
+        if(classOf.isAssignableFrom(javaClass<Date>())) {
+            return neoDate.parse(v.toString())
+        }
+        if(classOf.isEnum()) {
+            return EnumDecoder.decode(classOf, v as String)
+        }
+        if(classOf.equals(javaClass<Int>()) && v is Number) {
+            return v.toInt()
+        }
+        if(classOf.equals(javaClass<Short>()) && v is Number) {
+            return v.toShort()
+        }
+        if(classOf.equals(javaClass<Double>()) && v is Number) {
+            return v.toDouble()
+        }
+        if(classOf.equals(javaClass<Float>()) && v is Number) {
+            return v.toFloat()
+        }
+        return v
+    }
+
+    fun toDataStore(v:Any?) : Any? {
+        if(v==null) return v
+        if(relation && v is LivingElement<*>) {
+            return v.id()
+        }
+        if(classOf.isAssignableFrom(javaClass<Date>())) {
+            return java.lang.Long.parseLong(neoDate.format(v))
+        }
+        if(classOf.isEnum()) {
+            return (v as Enum<*>).name()
+        }
+        return v
+    }
 }
 
 open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val target: Class<T>) {
     public val id: Int = Interest.nextId()
     public var offset: Int = 0
         set(v) {
-            assert(v>=0)
+            assert(v >= 0)
             if ($offset != v) {
                 $offset = v
                 if (limit > 0) {
                     load()
+                    emitConfig();
                 }
             }
         }
     public var limit: Int = 0
         set(v) {
-            assert(v>=0)
-            if(v!=$limit) {
+            assert(v >= 0)
+            if (v != $limit) {
                 $limit = v
                 load()
+                emitConfig()
             }
         }
     public val size: Int get() = order.size + offset
@@ -200,6 +253,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
                 $orderBy = v
                 log.info("resort")
                 resort()
+                emitConfig()
             }
         }
     var filter: ElementFilter<T, U> = StaticFilter(this)
@@ -228,8 +282,8 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
             if (orderBy.size == 0) return 1
             for (p in orderBy) {
                 val dir = if (p.direction == SortDirection.ASC) 1 else -1
-                val c1 = o1[p.property]
-                val c2 = o2[p.property]
+                val c1 = o1.get(p.property, descriptor.descriptors[p.property]!!)
+                val c2 = o2.get(p.property, descriptor.descriptors[p.property]!!)
                 if (c1 == null) if (c2 != null) return -1 * dir
                 if (c2 == null) return 1 * dir
                 if (!(c1 is Comparable<*>)) throw IllegalArgumentException("compare ${p.property} $c1, $c2")
@@ -255,6 +309,10 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
         }
 
         log.info("$name: loading.... $offset->$limit")
+        refresh()
+    }
+
+    protected fun refresh() {
         val obs = object : Observer<T> {
 
             override fun onCompleted() {
@@ -266,6 +324,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
                         offset = off
                     }
                 }
+                emitConfig()
             }
             override fun onError(e: Throwable?) {
                 log.error("error on load", e)
@@ -274,18 +333,21 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
                 if (el != null) add(el)
             }
         }
-        galaxy.filter(filter, orderBy, offset, if(limit>0) limit+1 else 0).subscribe(obs)
+        galaxy.filter(filter, orderBy, offset, if (limit > 0) limit + 1 else 0).subscribe(obs)
+
     }
 
     public fun add(t: T): Boolean {
         val res = order.add(t.id())
         if (res) subject.onNext(AddEvent(id, sourceType, t.id()))
+        if(limit>0) refresh()
         return res
     }
 
     public fun remove(t: T): Boolean {
         val res = order.remove(t.id())
         subject.onNext(RemoveEvent(id, sourceType, t.id()))
+        if(limit>0) refresh()
         return res
     }
 
@@ -304,7 +366,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
         if (order.remove(e.id)) {
             subject.onNext(e)
             subject.onNext(RemoveEvent(id, sourceType, e.id))
-            load()
+            if(limit>0) refresh()
         }
     }
 
@@ -346,10 +408,22 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
     }
 
     protected open fun resort() {
+        if(orderBy.size==0) return
+        if(limit>0) {refresh(); return}
         val no = order.sort(comparator)
-        order.clear()
-        order.addAll(no)
-        subject.onNext(OrderEvent(id, sourceType, order))
+        val changed = order.withIndices().fold(false) {
+            (fl, p) ->
+            (p.second != no[p.first]) || fl
+        }
+        if (changed) {
+            order.clear()
+            order.addAll(no)
+            subject.onNext(OrderEvent(id, sourceType, order))
+        }
+    }
+
+    fun emitConfig() {
+        subject.onNext(InterestConfigEvent<U>(galaxy.kind, id, size, offset, limit, orderBy))
     }
 
     public fun get(id: U): T? = galaxy.get(id)
@@ -372,8 +446,16 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
 object Universe {
     private val galaxies: MutableMap<Class<*>, Any> = HashMap()
 
-    public fun starmap() : Iterable<DomainObjectDescriptor> {
-        return galaxies.values().map { (it as Galaxy<*,*>).descriptor }
+    public fun descriptor(kind:String) : DomainObjectDescriptor? {
+        val g = galaxies.values().filter { it is Galaxy<*,*> && it.kind == kind }.reduce { g,i -> g }
+        if(g is Galaxy<*,*>) {
+            return g.descriptor
+        }
+        return null
+    }
+
+    public fun starmap(): Iterable<DomainObjectDescriptor> {
+        return galaxies.values().map { (it as Galaxy<*, *>).descriptor }
     }
 
     public fun<T : LivingElement<U>, U : Hashable> galaxy(target: Class<T>): Galaxy<T, U>? {
@@ -392,14 +474,14 @@ object Universe {
 }
 
 
-class Retriever<U:Hashable>(val ids:Iterable<U>, val publisher:EntityPublisher)
+class Retriever<U : Hashable>(val ids: Iterable<U>, val publisher: EntityPublisher)
 
 abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<T>, val store: DataStore<Event<U>, U>) {
     public val descriptor: DomainObjectDescriptor = DomainObjectDescriptor(sourceType)
-    val retrievers : BlockingDeque<Retriever<U>> = LinkedBlockingDeque()
-    val hasso : ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    val retrievers: BlockingDeque<Retriever<U>> = LinkedBlockingDeque()
+    val hasso: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     val heaven: MutableMap<U, T> = WeakHashMap()
-    val interests: MutableMap<Int,Interest<T, U>> = WeakHashMap()
+    val interests: MutableMap<Int, Interest<T, U>> = WeakHashMap()
     val kind: String;
     val onetoone: MutableMap<String, Relation<LivingElement<Hashable>, Hashable>> = HashMap();
     val onetomany: MutableMap<String, Relation<LivingElement<Hashable>, Hashable>> = HashMap();
@@ -443,29 +525,34 @@ abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<
                         }
                         if (!rel.nullable && e.value == null) throw IllegalStateException("attempt to null property ${e.property} on ${el}")
                         if (el is DomainObject)
-                            el[e.property] = ch.passenger.kinterest.Universe.get<LivingElement<Hashable>, Hashable>(rel.target, e.value as Hashable)
+                            el.set(e.property, el.descriptor().descriptors[e.property]!!, ch.passenger.kinterest.Universe.get<LivingElement<Hashable>, Hashable>(rel.target, e.value as Hashable))
                     }
                 }
             }
             if (e is ElementEvent<U>) interests.values().forEach { it.consume(e) }
         }
-        val call = {() -> val drain : MutableList<Retriever<U>> = ArrayList();
-            drain.add(retrievers.take())
-            retrievers.drainTo(drain);
-            log.info("hasso woke up: $drain")
-            log.info("$kind retrieving ${drain.size} items")
-            drain.forEach { val obo = it.publisher; obo.publish(it.ids.map { this@Galaxy.get(it) }.filterNotNull() as List<LivingElement<Hashable>>) }
+        val call = {() ->
+            try {
+                val drain: MutableList<Retriever<U>> = ArrayList();
+                drain.add(retrievers.take())
+                retrievers.drainTo(drain);
+                log.info("hasso woke up: $drain")
+                log.info("$kind retrieving ${drain.size} items")
+                drain.forEach { val obo = it.publisher; obo.publish(it.ids.map { this@Galaxy.get(it) }.filterNotNull() as List<LivingElement<Hashable>>) }
+            } catch(e: Throwable) {
+                log.error("RETRIEVER", e)
+            }
         }
         hasso.scheduleAtFixedRate(call, 100, 100, TimeUnit.MILLISECONDS)
     }
 
     public fun interested(name: String = ""): Interest<T, U> {
         val interest = Interest(name, sourceType as Class<T>)
-        interests.put(interest.id,interest)
+        interests.put(interest.id, interest)
         return interest
     }
 
-    public fun uninterested(id:Int){
+    public fun uninterested(id: Int) {
         interests[id]?.close()
         interests.remove(id)
     }
@@ -476,11 +563,13 @@ abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<
 
     public fun get(id: U): T? {
         var t: T? = heaven[id]
-        if (t == null) {val el = retrieve(id); if(el!=null) heaven[id] = el; t = el}
+        if (t == null) {
+            val el = retrieve(id); if (el != null) heaven[id] = el; t = el
+        }
         return t
     }
 
-    public fun retriever(ids:Iterable<U>, obo:EntityPublisher) {
+    public fun retriever(ids: Iterable<U>, obo: EntityPublisher) {
         retrievers.offer(Retriever(ids, obo))
     }
 
@@ -509,7 +598,7 @@ abstract class Galaxy<T : LivingElement<U>, U : Hashable>(val sourceType: Class<
         store.createRelation(kind, from, toKind, to, relation, optional)
     }
 
-    val filterFactory : FilterFactory<T,U> = FilterFactory(sourceType)
+    val filterFactory: FilterFactory<T, U> = FilterFactory(sourceType)
 }
 
 fun Class<*>.entityName(): String {
@@ -524,7 +613,7 @@ public fun Method.index(): Boolean = getAnnotation(javaClass<Index>()) != null
 public fun Method.transient(): Boolean = getAnnotation(javaClass<Transient>()) != null
 public fun Method.relation(): Boolean = getAnnotation(javaClass<OneToOne>()) != null
 public fun Method.relTarget(): Class<*> = getAnnotation(javaClass<OneToOne>())!!.targetEntity()!!
-public fun Method.interest() : Boolean = getAnnotation(javaClass<OneToMany>()) != null
+public fun Method.interest(): Boolean = getAnnotation(javaClass<OneToMany>()) != null
 
 public fun Method.propertyName(): String {
     val mn = getName()!!

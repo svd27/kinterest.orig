@@ -11,4 +11,10 @@ public class EnumDecoder {
         }
         return null;
     }
+
+    public static Enum[] values(Class cls) {
+        Class<Enum> ec = cls;
+
+        return ec.getEnumConstants();
+    }
 }

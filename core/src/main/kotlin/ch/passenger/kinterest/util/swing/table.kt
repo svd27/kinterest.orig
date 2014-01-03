@@ -18,6 +18,7 @@ import ch.passenger.kinterest.service.InterestService
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
+import java.util.Date
 
 /**
  * Created by svd on 16/12/13.
@@ -48,6 +49,8 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
             }
         }
 
+
+
         interest.observable.subscribe {
             when(it) {
                 is UpdateEvent<U,*> -> {
@@ -63,6 +66,13 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
                 }
             }
         }
+    }
+    override fun getColumnClass(columnIndex: Int): Class<out Any?> {
+        val rt = columnAt(columnIndex)?.getter?.getReturnType()
+        when(rt) {
+            javaClass<Date>() -> return javaClass<Date>()
+        }
+        return super<AbstractTableModel>.getColumnClass(columnIndex)
     }
 
 

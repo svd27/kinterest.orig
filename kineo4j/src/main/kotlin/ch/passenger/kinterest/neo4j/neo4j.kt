@@ -64,6 +64,10 @@ import ch.passenger.kinterest.util.filter
 import org.neo4j.cypher.CypherExecutionException
 import org.neo4j.kernel.api.exceptions.schema.AlreadyIndexedException
 import rx.concurrency.ExecutorScheduler
+import java.util.Date
+import java.text.SimpleDateFormat
+import ch.passenger.kinterest.Universe
+import ch.passenger.kinterest.DomainPropertyDescriptor
 
 /**
  * Created by svd on 12/12/13.
@@ -117,9 +121,16 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
                     if (it.entity()?.hasProperty("ID")?:false && it.entity()?.hasProperty("KIND")?:false) {
                         log.info("prop change: ${it.entity()?.getId()}.${it.key()}: ${it.previouslyCommitedValue()} -> ${it.value()}")
                         val nkind = it.entity()?.getProperty("KIND")?.toString()
-                        if (nkind != null)
-                            subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
-                                    it.key()!!, it.value(), it.previouslyCommitedValue()))
+                        if (nkind != null) {
+                            val d = Universe.descriptor(nkind)
+                            val pd = d?.descriptors?.get(it.key())
+                            if(d is DomainObjectDescriptor && pd is DomainPropertyDescriptor) {
+                                val value = pd.fromDataStore(it.value())
+
+                                subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
+                                        it.key()!!, value, it.previouslyCommitedValue()))
+                            }
+                        }
                     }
                 }
                 data.removedNodeProperties()?.forEach {
@@ -534,13 +545,21 @@ public fun Node.dump(): String {
 
 abstract class Neo4jDomainObject(val oid: Hashable, val store: Neo4jDatastore<*>, protected val kind: String, private val node: Node) : DomainObject {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject>())!!
-    protected fun<T> prop(name: String): T? = store.tx { node().getProperty(if (name == "id") "ID" else name) as T? }
-    protected fun<T> prop(name: String, value: T?): Unit = store.tx { node().setProperty((if (name == "id") "ID" else name), value) }
+    protected fun<T> prop(name:String, pd:DomainPropertyDescriptor): T? = store.tx {
+        val n = if (name == "id") "ID" else name
+        if(node().hasProperty(n)) {
+            pd.fromDataStore(node().getProperty(n)) as T?
+        }
+        else null
+    }
+    protected fun<T> prop(name: String, pd:DomainPropertyDescriptor, value: T?): Unit = store.tx {
+        node().setProperty((if (name == "id") "ID" else name), pd.toDataStore(value))
+    }
 
     protected inline fun node(): Node = node
 
-    public override fun get(p: String): Any? = prop(p)
-    public override fun set(p: String, value: Any?): Unit = prop(p, value)
+    public override fun get(p: String, pd:DomainPropertyDescriptor): Any? = prop(p, pd)
+    public override fun set(p: String, pd:DomainPropertyDescriptor, value: Any?): Unit = prop(p, pd, value)
 }
 
 

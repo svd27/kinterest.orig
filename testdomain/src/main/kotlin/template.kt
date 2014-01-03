@@ -14,6 +14,7 @@ import ch.passenger.kinterest.testdomain.TestB
 import ch.passenger.kinterest.LivingElement
 import ch.passenger.kinterest.util.InterestList
 import ch.passenger.kinterest.Interest
+import ch.passenger.kinterest.DomainObjectDescriptor
 
 class TestATempl( val id:Long, val store : Neo4jDatastore<Long>, val node:Node) :  TestA {
     protected fun<T> prop(name: String): T? = store.tx { node().getProperty(name) as T? }
@@ -33,6 +34,9 @@ class TestATempl( val id:Long, val store : Neo4jDatastore<Long>, val node:Node) 
     set(v) = prop("ami", v)
 
 
+    override fun galaxy(): Galaxy<out LivingElement<Long>, out Long> = TestAImpl.galaxy
+    override fun descriptor(): DomainObjectDescriptor = galaxy().descriptor
+    
     override protected val subject = subject()
 
     override var lots: Double = 0.0

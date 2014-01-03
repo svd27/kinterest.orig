@@ -112,10 +112,10 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                 if (it.ro) body.append("val ") else body.append("var ")
                 body.append(it.name).append(" : ").append(it.kind)
                 if (it.nullable) body.append("?")
-                body.append("\nget() = prop(\"${it.name}\")")
+                body.append("\nget() = prop(\"${it.name}\", descriptor().descriptors[\"${it.name}\"]!!)")
                 if (!it.nullable) body.append("!!")
                 if (!it.ro) {
-                    body.append("\nset(v) = prop(\"${it.name}\", v)")
+                    body.append("\nset(v) = prop(\"${it.name}\", descriptor().descriptors[\"${it.name}\"]!!, v)")
                 }
                 if (it.ro) {
                     mandPars.append("${it.name} : ${it.kind}${if(it.nullable) '?' else ' '}, ")
@@ -251,7 +251,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 
     inner class Prop(val name: String, val ms: Array<CtMethod>) {
         val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
-                "java.util.List" to "jet.MutableList");
+                "java.util.List" to "jet.MutableList", "int" to "Int");
         val ro: Boolean get() = ms.size == 1
         fun defval(): String? {
             val dv = ms[0].getAnnotation(javaClass<DefaultValue>()) as DefaultValue?

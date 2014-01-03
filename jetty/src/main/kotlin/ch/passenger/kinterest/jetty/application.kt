@@ -69,7 +69,7 @@ class ApplicationServlet(val serverContext: ServletContextHandler, val app: KIAp
 class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublisher {
     val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
     override fun onWebSocketText(message: String?) {
-        log.info(message)
+        log.debug(message)
         //val om = ObjectMapper()!!
         //val json = om.readTree(message)!!
         //val action = json.path("action")?.textValue()
@@ -87,7 +87,7 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
         val ja: ArrayNode = om.createArrayNode()!!
         events.forEach {
             val an: ArrayNode = ja
-            an.add(om.valueToTree<JsonNode?>(it))
+            an.add(Jsonifier.jsonify(it))
         }
         send(ja.toString()!!)
     }
@@ -98,7 +98,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
     val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
     val om = ObjectMapper()
     override fun onWebSocketText(message: String?) {
-        log.info(message)
+        log.debug(message)
     }
 
 
@@ -168,6 +168,10 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
                 pn.put("nullable", pd.getter.nullable())
                 pn.put("unique", pd.getter.unique())
                 pn.put("readonly", pd.setter==null)
+                pn.put("enum", pd.enum)
+                if(pd.enum) {
+                    pn.put("enumvalues", om.valueToTree<JsonNode>(pd.enumValues()))
+                }
                 pa.add(pn)
             }
             entity.put("properties", pa)
@@ -183,8 +187,9 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
 class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : KIServlet(app) {
     val patCrt = Pattern.compile("/create/([A-Za-z]+)")
     val patFilter = Pattern.compile("/filter/([0-9]+)")
+    val patRemove = Pattern.compile("/remove/([0-9]+)")
     val patBuffer = Pattern.compile("([0-9]+)/offset/([0-9]+)/buffer/([0-9]+)")
-    val patSave = Pattern.compile("/save/([0-9]+)")
+    val patSave = Pattern.compile("/save")
 
 
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
@@ -197,6 +202,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
 
         val path = req.getPathInfo()!!
         val mCrt = patCrt.matcher(path)
+        val mRem = patRemove.matcher(path)
         if (mCrt.matches()) {
             val i = service.create(mCrt.group(1)!!)
             val json = om.createObjectNode()!!
@@ -209,6 +215,10 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             resp.getWriter()?.print(json.toString()!!)
             resp.flushBuffer()
 
+        } else if (mRem.matches()) {
+            val iid = Integer.parseInt(mRem.group(1)!!)
+            service.delete(iid)
+            ack(resp)
         } else throw IllegalArgumentException("unknown GET: $path")
     }
 
