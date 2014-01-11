@@ -10,17 +10,17 @@ import org.neo4j.graphdb.GraphDatabaseService
 import ch.passenger.kinterest.Universe
 import javax.persistence.UniqueConstraint
 import ch.passenger.kinterest.annotations.Index
+import ch.passenger.kinterest.annotations.Label
 
 /**
  * Created by svd on 16/12/13.
  */
 Entity(name="Diary")
 trait Diary : LivingElement<Long> {
-
     Id
     override fun id(): Long
     val owner : DiaryOwner [OneToOne(targetEntity=javaClass<DiaryOwner>())] get
-    val title : String
+    val title : String [Label] get
     val created : Date [DefaultValue("java.util.Date()")] get
 
 }
@@ -29,7 +29,7 @@ Entity(name="DiaryEntry")
 trait DiaryDayEntry : LivingElement<Long> {
     Id
     override fun id(): Long
-    var title : String
+    var title : String [Label] get
     val created : Date [DefaultValue("java.util.Date()")] get
     var dated : Date [DefaultValue("java.util.Date()")] get
 }
@@ -43,7 +43,7 @@ trait DiaryOwner : LivingElement<Long> {
     Id
     override fun id(): Long
     val email : String [UniqueConstraint] get
-    var nick : String [Index] get
+    var nick : String [Index Label] get
     var birthdate : Date?
     var state : OwnerState
     var height : Double

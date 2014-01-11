@@ -177,7 +177,7 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
     }
 
     fun or(vararg f:ElementFilter<T,U>) : ElementFilter<T,U> {
-        return binop(FilterRelations.AND, f.toList()) {
+        return binop(FilterRelations.OR, f.toList()) {
             (e,fl) -> fl.any { it.accept(e) }
         }
     }
@@ -207,8 +207,11 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
         }
     }
 
+    fun staticFilter(i:Interest<T,U>) : ElementFilter<T,U> = StaticFilter(i)
+
     fun fromJson(json:ObjectNode) : ElementFilter<T,U> {
         val om = ObjectMapper()
+        log.debug("FILTER: ${om.writeValueAsString(json)}")
         val sop = json["relation"]!!.textValue()!!
         val op = FilterRelations.valueOf(sop)
         return when(op) {

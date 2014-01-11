@@ -10,4 +10,5 @@ import java.lang.annotation.RetentionPolicy
  * Created by svd on 12/12/13.
  */
 annotation [Retention(RetentionPolicy.RUNTIME)] [Target(ElementType.METHOD)] class  DefaultValue(val value : String)
+annotation [Retention(RetentionPolicy.RUNTIME)] [Target(ElementType.METHOD)] class  Label()
 annotation [Retention(RetentionPolicy.RUNTIME)] [Target(ElementType.METHOD)] class  Index

@@ -66,8 +66,10 @@ public object Jsonifier {
                 on.put("interest", event.interest)
                 on.put("limit", event.limit)
                 on.put("offset", event.offset)
+                on.put("estimatedsize", event.size)
                 val an = om.createArrayNode()!!
                 event.orderBy.forEach { an.add(om.valueToTree<JsonNode>(it)) }
+                on.put("orderBy", an)
             }
         }
 
@@ -118,6 +120,8 @@ public object Jsonifier {
                 when(pd.linkType) {
                     javaClass<Long>() -> m[it] = json[it]!!.asLong()
                     javaClass<Int>() -> m[it] = json[it]!!.asInt()
+                    javaClass<java.lang.Long>() -> m[it] = json[it]!!.asLong()
+                    javaClass<java.lang.Integer>() -> m[it] = json[it]!!.asInt()
                     else -> throw IllegalArgumentException("$it: ${pd.linkType} currently not supported")
                 }
             } else {

@@ -39,6 +39,11 @@ import ch.passenger.kinterest.Universe
 import javax.persistence.Entity
 import ch.passenger.kinterest.nullable
 import ch.passenger.kinterest.unique
+import java.io.File
+import java.nio.file.Files
+import java.io.FileInputStream
+import java.io.ByteArrayInputStream
+import ch.passenger.kinterest.label
 
 
 /**
@@ -122,6 +127,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 class AppServlet(app: KIApplication) : KIServlet(app) {
     fun init(ctx: ServletContextHandler) {
         ctx.addServlet(ServletHolder(this), "/${app.name}")
+        ctx.addServlet(ServletHolder(StaticServlet(File("/Users/svd/dev/proj/kotlin/kIjs/classes/artifacts/kjs"))), "/${app.name}/static/*")
         app.descriptors.forEach {
             log.info("service .... $it")
             val s = it.create()
@@ -172,6 +178,7 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
                 if(pd.enum) {
                     pn.put("enumvalues", om.valueToTree<JsonNode>(pd.enumValues()))
                 }
+                pn.put("label", pd.getter.label())
                 pa.add(pn)
             }
             entity.put("properties", pa)
@@ -188,8 +195,14 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
     val patCrt = Pattern.compile("/create/([A-Za-z]+)")
     val patFilter = Pattern.compile("/filter/([0-9]+)")
     val patRemove = Pattern.compile("/remove/([0-9]+)")
-    val patBuffer = Pattern.compile("([0-9]+)/offset/([0-9]+)/buffer/([0-9]+)")
+    val patBuffer = Pattern.compile("/([0-9]+)/offset/([0-9]+)/limit/([0-9]+)")
+    val patOrder = Pattern.compile("/([0-9]+)/orderBy")
     val patSave = Pattern.compile("/save")
+    val patEntityDelete = Pattern.compile("/delete/([0-9]+)")
+    val patCreateEntity = Pattern.compile("/createEntity")
+    val patEntityAdd = Pattern.compile("/([0-9]+)/add/([0-9]+)")
+    val patEntityRemove = Pattern.compile("/([0-9]+)/remove/([0-9]+)")
+    val patClear  = Pattern.compile("/([0-9]+)/clear")
 
 
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
@@ -203,13 +216,52 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
         val path = req.getPathInfo()!!
         val mCrt = patCrt.matcher(path)
         val mRem = patRemove.matcher(path)
+
+        val mb = patBuffer.matcher(path)
+        if(mb.matches()) {
+            val interest : Int = Integer.parseInt(mb.group(1)!!)
+            val off : Int = Integer.parseInt(mb.group(2)!!)
+            val buffer : Int = Integer.parseInt(mb.group(3)!!)
+
+            service.buffer(interest, buffer)
+            service.offset(interest, off)
+            ack(resp)
+            return
+        }
+
+        val madd = patEntityAdd.matcher(path)
+        if(madd.matches()) {
+            val interest : Int = Integer.parseInt(madd.group(1)!!)
+            val eid : Long = java.lang.Long.parseLong(madd.group(2)!!)
+            service.add(interest, eid)
+            ack(resp)
+            return
+        }
+
+        val mrem = patEntityRemove.matcher(path)
+        if(mrem.matches()) {
+            val interest : Int = Integer.parseInt(mrem.group(1)!!)
+            val eid : Long = java.lang.Long.parseLong(mrem.group(2)!!)
+            service.remove(interest, eid)
+            ack(resp)
+            return
+        }
+
+        val mclear = patClear.matcher(path)
+        if(mclear.matches()) {
+            val interest : Int = Integer.parseInt(mrem.group(1)!!)
+            service.clear(interest)
+            ack(resp)
+            return
+        }
+
         if (mCrt.matches()) {
             val i = service.create(mCrt.group(1)!!)
             val json = om.createObjectNode()!!
             json.put("response", "ok")
             json.put("interest", i)
             resp.setContentType("application/json")
-            resp.setContentLength(json.toString()!!.getBytes("UTF-8").size)
+            //resp.setContentLength(json.toString()!!.getBytes("UTF-8").size)
             log.info("writing $json")
             //resp.getWriter()?.write()
             resp.getWriter()?.print(json.toString()!!)
@@ -282,14 +334,19 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             ack(resp)
             return
         }
-        val mb = patBuffer.matcher(path)
-        if(mb.matches()) {
-            val interest : Int = Integer.parseInt(mb.group(1)!!)
-            val off : Int = Integer.parseInt(mb.group(2)!!)
-            val buffer : Int = Integer.parseInt(mb.group(3)!!)
 
-            service.buffer(interest, buffer)
-            service.offset(interest, off)
+        val mce = patCreateEntity.matcher(path)
+        if(mce.matches()) {
+            service.createElement(Jsonifier.valueMap(om.readTree(read(req.getInputStream()!!)) as ObjectNode, service.galaxy.descriptor))
+            ack(resp)
+            return
+        }
+
+        val mob = patOrder.matcher(path)
+        if(mob.matches()){
+            val sint = mob.group(1)!!
+            val id = Integer.parseInt(sint)
+            service.orderBy(id, om.readTree(read(req.getInputStream()!!)) as ArrayNode)
             ack(resp)
             return
         }
@@ -316,13 +373,7 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
     override fun service(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
         if (resp == null) throw IllegalStateException()
-        val hnen = req.getHeaderNames()!!
-        while (hnen.hasMoreElements()) {
-            val hname = hnen.nextElement()!!
-            req.getHeaders(hname)?.iterator()?.forEach {
-                log.info("HEADER: $hname = '$it'")
-            }
-        }
+
         val httpSession = req.getSession(true)!!
         if (httpSession.getAttribute(SESSION_KEY) == null) {
             httpSession.setAttribute(SESSION_KEY, KISession(KIPrincipal.ANONYMOUS, app))
@@ -334,6 +385,7 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
         currentSession.set(s)
         currentApp.set(app)
         s.current()
+        log.info("service ${req.getPathInfo()}")
         super.service(req, resp)
     }
 
@@ -341,6 +393,32 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
         resp.getWriter()?.write("{response: 'ok'}")
         resp.flushBuffer()
     }
+
+    protected fun app(s: HttpSession): KIApplication? = s.getAttribute(APPLICATION_KEY) as KIApplication
+
+
+    class object {
+        val SESSION_KEY = "KISESSION"
+        val APPLICATION_KEY = "KIAPP"
+    }
+}
+
+class StaticServlet(val root:File) : HttpServlet() {
+    protected open val log: Logger = LoggerFactory.getLogger(this.javaClass)!!
+    override fun service(req: HttpServletRequest?, resp: HttpServletResponse?) {
+        if (req == null) throw IllegalStateException()
+        if (resp == null) throw IllegalStateException()
+
+        val path = req.getPathInfo()!!
+        val resource = File(root, path)
+        val m  = Files.probeContentType(resource.toPath())
+        resp.setContentType(m)
+        val fin = FileInputStream(resource)
+        val ba = Array<Byte>(1024) {0}
+        fin.buffered(1024).copyTo(resp.getOutputStream()!!)
+        resp.flushBuffer()
+    }
+
 
     protected fun app(s: HttpSession): KIApplication? = s.getAttribute(APPLICATION_KEY) as KIApplication
 

@@ -61,7 +61,7 @@ fun ServletContextHandler.socket(cfg : ServletContextHandler.() -> Pair<String,C
     val wsc = WebSocketCreator {
         (req,resp) ->
         val ctor = pair.second.getConstructor(javaClass<HttpSession>())
-        
+        log.info("create ws ${ctor} ${req} ${req?.getSession()}")
         ctor.newInstance(req?.getSession()!!)
     }
     //class WSSServlet() : KIWebsocketServlet(wsc)

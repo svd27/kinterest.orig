@@ -18,6 +18,9 @@ import java.util.HashSet
 import rx.Subscription
 import java.util.concurrent.Executors
 import java.util.concurrent.ExecutorService
+import com.fasterxml.jackson.databind.node.ArrayNode
+import ch.passenger.kinterest.SortKey
+import ch.passenger.kinterest.SortDirection
 
 /**
  * Created by svd on 18/12/13.
@@ -134,6 +137,11 @@ public open class InterestService<T : LivingElement<U>, U : Hashable>(val galaxy
             interest.filter = f
         }
     }
+    public fun orderBy(id:Int, order:ArrayNode) {
+        val i = galaxy.interests[id]!!
+        log.info("$order")
+        i.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.copyToArray()
+    }
     public fun buffer(id: Int, limit: Int) {
         val interest = galaxy.interests[id]
         if (interest != null) {
@@ -172,6 +180,18 @@ public open class InterestService<T : LivingElement<U>, U : Hashable>(val galaxy
                 if(value!=null) session.entities?.publish(listOf(value))
             }
         }
+    }
+
+    public fun add(id:Int, eid:Hashable) {
+        KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.add(eid as U) }
+    }
+
+    public fun remove(id:Int, eid:Hashable) {
+        KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.remove(eid as U) }
+    }
+
+    public fun clear(id:Int) {
+        KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; ai.filter= galaxy.filterFactory.staticFilter(ai) }
     }
 }
 

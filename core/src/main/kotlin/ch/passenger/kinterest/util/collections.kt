@@ -25,9 +25,9 @@ class InterestList<T:LivingElement<U>,U:Hashable>(protected val interest:Interes
     override fun get(index: Int): T = interest.at(index)
 
 
-    override fun add(e: T): Boolean = interest.add(e)
+    override fun add(e: T): Boolean = interest.add(e.id())
     override fun remove(o: Any?): Boolean {
-        if(interest.target.isAssignableFrom(o.javaClass)) return interest.remove(o as T)
+        if(interest.target.isAssignableFrom(o.javaClass)) return interest.remove(o as U)
         return false
     }
     override public val observable: Observable<Event<U>> = interest.observable

@@ -68,6 +68,7 @@ import java.util.Date
 import java.text.SimpleDateFormat
 import ch.passenger.kinterest.Universe
 import ch.passenger.kinterest.DomainPropertyDescriptor
+import ch.passenger.kinterest.nullable
 
 /**
  * Created by svd on 12/12/13.
@@ -225,14 +226,16 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         val setter = values.entrySet().filter { !descriptor.uniques.containsItem(it.key) }.map { it.key }
         val kind = descriptor.entity
         tx {
-            val inits = values.map { "${it.getKey()}: {${it.getKey()}}" }.reduce { a, b -> "$a, $b" }
+            val rels = values.keySet().filter { descriptor.descriptors[it]!!.relation }
+
+            val inits = values.filter { !rels.contains(it.first) }.map { "${it.getKey()}: {${it.getKey()}}" }.reduce { a, b -> "$a, $b" }
             val q: String? = """
             MERGE (n:$kind {ID: {id}, KIND: "${descriptor.entity}"${if (inits.length > 0) ", " else ""} $inits})
             RETURN n
             """;
             val m: MutableMap<String, Any> = HashMap()
             values.entrySet().forEach {
-                val v = it.value
+                val v = descriptor.descriptors[it.key]!!.toDataStore(it.value)
                 if (v != null) m[it.key] = v
                 else m[it.key] = "NULL"
             }
@@ -243,7 +246,10 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
             log.info { "create result: ${l}" }
             l.forEach { log.info(it.dump()) }
             if (l.size > 1) throw IllegalStateException()
-
+            rels.forEach {
+                val pd = descriptor.descriptors[it]!!
+                setRelation(id, values[it] as Hashable, null, it, pd.getter.nullable(), descriptor)
+            }
             //log.info ("created: " + node.dump() )
             success()
         }
@@ -309,6 +315,29 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         subject.onNext(UpdateEvent(desc.entity, from.id(), relation, to.id(), old?.id()))
     }
 
+    override fun <V : Hashable> setRelation(from: U, to: V?, old: V?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
+        if (to == null) {
+            deleteRelation(from, relation, desc)
+            return
+        }
+        val dpd = desc.descriptors[relation]!!
+        val tot = labelForClass(dpd.classOf as Class<LivingElement<out Hashable>>)
+        val fk : String = desc.entity
+        val pars = mapOf("from" to from, "to" to  to, "optional" to optional)
+        val q =
+                """
+        MATCH (n:${fk}), (m:${tot})
+        WHERE n.ID = {from} and m.ID = {to}
+        CREATE UNIQUE (n)-[r:$relation {OPTIONAL: {optional}}]->(m)
+        RETURN r
+        """
+        tx {
+            log.info("executing\n$q\n$pars")
+            engine.execute(q, pars)
+        }
+        subject.onNext(UpdateEvent(desc.entity, from, relation, to, old))
+    }
+
 
     override fun <V : Hashable> createRelation(fromKind: String, from: U, toKind: String, to: V, relation: String, optional: Boolean) {
         val pars = mapOf("from" to from, "to" to  to, "optional" to optional)
@@ -362,6 +391,24 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
             del = res?.columnAs<Hashable>("ID")?.iterator()?.take(1) as Hashable?
         }
         subject.onNext(UpdateEvent(desc.entity, from.id(), relation, null, del))
+
+    }
+
+    override fun deleteRelation(from: U, relation: String, desc: DomainObjectDescriptor) {
+        val pars = mapOf("from" to from)
+        val q =
+                """
+        MATCH (n:${desc.entity} { ID : {from}})-[r:$relation {OPTIONAL = false}]->(to))]
+        WHERE HAS(to.ID)
+        DELETE r
+        RETURN to.ID as ID
+        """
+        var del: Hashable? = null
+        tx {
+            val res = engine.execute(q, pars)
+            del = res?.columnAs<Hashable>("ID")?.iterator()?.take(1) as Hashable?
+        }
+        subject.onNext(UpdateEvent(desc.entity, from, relation, null, del))
 
     }
 
@@ -452,7 +499,7 @@ class Neo4jFilterFactory {
         val pars: MutableMap<String, Any> = HashMap()
         pars["skip"] = offset
         pars["limit"] = limit
-        val skip = if (offset > 0) " SKIP {skip}" else ""
+        val skip = " SKIP {skip}"
         val lim = if (limit > 0) " LIMIT {limit}" else ""
         val q = """
         MATCH (n:${f.kind}) WHERE ${clause(f, pars)}
@@ -503,8 +550,8 @@ class Neo4jFilterFactory {
         f.combination.forEach {
             if (sb.length() > 0) {
                 sb.append(" $op ")
-                sb.append("(").append(clause(it, pars)).append(")")
             }
+            sb.append("(").append(clause(it, pars)).append(")")
         }
         return sb.toString()
     }

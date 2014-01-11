@@ -35,6 +35,7 @@ import javax.persistence.OneToMany
 import java.util.Date
 import java.text.SimpleDateFormat
 import ch.passenger.kinterest.util.json.EnumDecoder
+import ch.passenger.kinterest.annotations.Label
 
 /**
  * Created by svd on 11/12/13.
@@ -90,7 +91,9 @@ trait DataStore<T : Event<U>, U : Hashable> {
     fun<V : Hashable> createRelation(fromKind: String, from: U, toKind: String, to: V, relation: String, optional: Boolean)
     fun<V : Hashable> findRelation(fromKind: String, from: U, toKind: String, relation: String): V?
     fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor)
+    fun<V : Hashable> setRelation(from: U, to: V?, old: V?, relation: String, optional: Boolean, desc: DomainObjectDescriptor)
     fun<A : LivingElement<U>> deleteRelation(from: A, relation: String, desc: DomainObjectDescriptor)
+    fun deleteRelation(from: U, relation: String, desc: DomainObjectDescriptor)
     fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor): Observable<V>
     fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor)
     fun<A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor)
@@ -219,6 +222,10 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
         }
         return v
     }
+
+    public fun toString() : String {
+        return "${property}: rel = ${relation} classOf: ${classOf}"
+    }
 }
 
 open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val target: Class<T>) {
@@ -313,6 +320,11 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
     }
 
     protected fun refresh() {
+        if(filter.relation==FilterRelations.STATIC) {
+            subject.onNext(OrderEvent(id, sourceType, ArrayList(if(limit>0) order.subList(offset, Math.min(order.size, offset+limit)) else order)))
+            return
+        }
+        order.clear()
         val obs = object : Observer<T> {
 
             override fun onCompleted() {
@@ -320,6 +332,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
                 subject.onNext(OrderEvent(id, sourceType, ArrayList(order)))
                 if (order.size == 0 && offset > 0) {
                     val off = Math.max(0, offset - limit)
+                    log.info("re-adjust offset $offset -> $off")
                     if (offset != off) {
                         offset = off
                     }
@@ -330,23 +343,24 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
                 log.error("error on load", e)
             }
             override fun onNext(el: T?) {
-                if (el != null) add(el)
+                if (el != null) order.add(el.id())
             }
         }
         galaxy.filter(filter, orderBy, offset, if (limit > 0) limit + 1 else 0).subscribe(obs)
 
     }
 
-    public fun add(t: T): Boolean {
-        val res = order.add(t.id())
-        if (res) subject.onNext(AddEvent(id, sourceType, t.id()))
+    public fun add(aid: U): Boolean {
+        if(order.contains(aid)) return false
+        val res = order.add(aid)
+        if (res) subject.onNext(AddEvent(id, sourceType, aid))
         if(limit>0) refresh()
         return res
     }
 
-    public fun remove(t: T): Boolean {
-        val res = order.remove(t.id())
-        subject.onNext(RemoveEvent(id, sourceType, t.id()))
+    public fun remove(aid: U): Boolean {
+        val res = order.remove(aid)
+        subject.onNext(RemoveEvent(id, sourceType, aid))
         if(limit>0) refresh()
         return res
     }
@@ -375,7 +389,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
         val el = get(e.id)
         log.info("GOT: $el")
         if (el != null && filter.accept(el)) {
-            if (!add(el)) return
+            if (!add(el.id())) return
             subject.onNext(e)
             resort()
         }
@@ -390,7 +404,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
             if (el == null) return
             if (!filter.accept(el)) {
                 log.info("${sourceType}.${e.id} removed coz filter rejects")
-                remove(el)
+                remove(el.id())
             } else {
                 log.info("${sourceType}.${e.id} propagate and sort")
                 subject.onNext(e)
@@ -400,7 +414,7 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
             val ne = galaxy.get(e.id)
             if (ne != null && filter.accept(ne)) {
                 log.info("${sourceType}.${e.id} adding coz filter says so")
-                add(ne)
+                add(ne.id())
                 subject.onNext(AddEvent(id, sourceType, ne.id()))
                 resort()
             }
@@ -409,16 +423,19 @@ open class Interest<T : LivingElement<U>, U : Hashable>(val name: String, val ta
 
     protected open fun resort() {
         if(orderBy.size==0) return
-        if(limit>0) {refresh(); return}
+        if(limit>0&&filter.relation!=FilterRelations.STATIC) {refresh(); return}
         val no = order.sort(comparator)
         val changed = order.withIndices().fold(false) {
             (fl, p) ->
             (p.second != no[p.first]) || fl
         }
         if (changed) {
+            log.info("order changed")
             order.clear()
             order.addAll(no)
             subject.onNext(OrderEvent(id, sourceType, order))
+        } else {
+            log.info("no change no order")
         }
     }
 
@@ -614,6 +631,7 @@ public fun Method.transient(): Boolean = getAnnotation(javaClass<Transient>()) !
 public fun Method.relation(): Boolean = getAnnotation(javaClass<OneToOne>()) != null
 public fun Method.relTarget(): Class<*> = getAnnotation(javaClass<OneToOne>())!!.targetEntity()!!
 public fun Method.interest(): Boolean = getAnnotation(javaClass<OneToMany>()) != null
+public fun Method.label(): Boolean = getAnnotation(javaClass<Label>()) != null
 
 public fun Method.propertyName(): String {
     val mn = getName()!!
