@@ -36,11 +36,12 @@ import javax.swing.JFormattedTextField
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import ch.passenger.kinterest.service.KIApplication
-import ch.passenger.kinterest.jetty.jetty
 import ch.passenger.kinterest.jetty.*
 import ch.passenger.kinterest.service.SimpleServiceDescriptor
 import ch.passenger.kinterest.service.KISession
 import ch.passenger.kinterest.service.KIPrincipal
+import rx.plugins.RxJavaErrorHandler
+import ch.passenger.kinterest.entityName
 
 
 /**
@@ -50,10 +51,13 @@ val log = LoggerFactory.getLogger("diaries")!!
 
 val app = KIApplication("diaries", listOf(
         SimpleServiceDescriptor(javaClass<InterestService<DiaryOwner,Long>>()) {
-            InterestService(Universe.galaxy(javaClass<DiaryOwner>())!!)
+            InterestService(Universe.galaxy(javaClass<DiaryOwner>().entityName())!!)
         },
         SimpleServiceDescriptor(javaClass<InterestService<Diary,Long>>()) {
-            InterestService(Universe.galaxy(javaClass<Diary>())!!)
+            InterestService(Universe.galaxy(javaClass<Diary>().entityName())!!)
+        },
+        SimpleServiceDescriptor(javaClass<InterestService<DiaryDayEntry,Long>>()) {
+            InterestService(Universe.galaxy(javaClass<DiaryDayEntry>().entityName())!!)
         }
 ))
 
@@ -66,7 +70,13 @@ Logger.getLogger("").getHandlers().forEach {
 */
     Logger.getLogger("org.eclipse").setLevel(Level.FINE)
 //Logger.getLogger("").setLevel(Level.FINE)
-
+    rx.plugins.RxJavaPlugins.getInstance()!!.registerErrorHandler(object : RxJavaErrorHandler() {
+        private final val log = LoggerFactory.getLogger("RXERRORS")!!
+        override fun handleError(e: Throwable?) {
+            log.error("RX ERROR: ", e)
+            e?.printStackTrace()
+        }
+    })
     val db = org.neo4j.graphdb.factory.GraphDatabaseFactory().newEmbeddedDatabase("./neo/data")
     val api : GraphDatabaseAPI = db as GraphDatabaseAPI
     val srv = org.neo4j.server.WrappingNeoServer(api)
@@ -91,8 +101,8 @@ Logger.getLogger("").getHandlers().forEach {
 
     session.current()
 
-    val diaries = Universe.galaxy(javaClass<Diary>())!!
-    val users = Universe.galaxy(javaClass<DiaryOwner>())!!
+    val diaries = Universe.galaxy<Diary,Long>(javaClass<Diary>().entityName())!!
+    val users = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
     val service = InterestService(users)
     val sdiary = InterestService(diaries)
 
@@ -118,9 +128,13 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         val fu = JFrame("Users")
         fu.getContentPane()!!.setLayout(BorderLayout())
 
-        users.filter(iuser, FilterFactory(javaClass<DiaryOwner>()).gte("id", 0.toLong()).toJson())
-        val galaxy = Universe.galaxy(javaClass<DiaryOwner>())!!
-        val tbl = JTable(InterestTableModel(galaxy.interests[iuser]!!, users))
+        users.filter(iuser, FilterFactory(javaClass<DiaryOwner>(), users.galaxy.descriptor).gte("id", 0.toLong()).toJson())
+        val galaxy = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
+        var ain :Interest<DiaryOwner,Long>? = null
+        galaxy.withInterestDo {
+            ain = it[iuser]
+        }
+        val tbl = JTable(InterestTableModel(ain!!, users))
         tbl.getTableHeader()?.addMouseListener(object : MouseAdapter() {
 
             override fun mouseClicked(e: MouseEvent) {
@@ -129,7 +143,7 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
                 val m = tbl.getModel() as InterestTableModel<DiaryOwner,Long>
                 val col = m.columnAt(idx)
                 if(col!=null) {
-                    val ain = galaxy.interests[iuser]!!
+                    val ain = ain!!
                     if(!add) {
                         if(ain.orderBy.size==1 && ain.orderBy[0]?.property==col.property) {
                             val sortDirection = ain.orderBy[0].direction
@@ -186,11 +200,9 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
                 val v = (tfPagesize.getValue() as Number).toInt()
 
                 if(v<1) {
-                    users.buffer(iuser, 0)
-                    users.offset(iuser, 0)
+                    users.buffer(iuser, 0, 0)
                 } else {
-                    users.buffer(iuser, v)
-                    users.offset(iuser, 0)
+                    users.buffer(iuser, 0, v)
                 }
             }
         })
@@ -198,16 +210,16 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         val prev = object : AbstractAction("<") {
 
             override fun actionPerformed(e: ActionEvent) {
-                val ain = galaxy.interests[iuser]!!
-                ain.offset = Math.max(ain.offset-ain.limit,0)
+                val ain = ain!!
+                ain.buffer(Math.max(ain.offset-ain.limit,0), ain.limit)
             }
         }
         prev.setEnabled(false)
         val next = object : AbstractAction(">") {
 
             override fun actionPerformed(e: ActionEvent) {
-                val ain = galaxy.interests[iuser]!!
-                ain.offset = if(ain.offset+ain.limit>ain.size) ain.size-ain.limit else ain.offset+ain.limit
+                val ain = ain!!
+                ain!!.buffer(if(ain.offset+ain.limit>ain.estimatedsize) ain.estimatedsize-ain.limit else ain.offset+ain.limit, ain.limit)
             }
         }
         next.setEnabled(false)
@@ -218,9 +230,9 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         fu.getContentPane()?.add(south, BorderLayout.SOUTH)
 
         tbl.getModel()?.addTableModelListener {
-            val ain = galaxy.interests[iuser]!!
-            log.info("TME: sz: ${ain.size} off: ${ain.offset} lim: ${ain.limit}")
-            if(ain.offset+ain.limit<=   ain.size) {
+            val ain = ain!!
+            log.info("TME: sz: ${ain.estimatedsize} off: ${ain.offset} lim: ${ain.limit}")
+            if(ain.offset+ain.limit<=   ain.estimatedsize) {
                 next.setEnabled(true)
             } else next.setEnabled(false)
             if(ain.offset>0) {

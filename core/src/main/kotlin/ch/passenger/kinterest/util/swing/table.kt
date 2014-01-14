@@ -23,7 +23,7 @@ import java.util.Date
 /**
  * Created by svd on 16/12/13.
  */
-class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,U>, val service:InterestService<T,U>) : AbstractTableModel() {
+class InterestTableModel<T:LivingElement<U>,U:Comparable<U>>(val interest:Interest<T,U>, val service:InterestService<T,U>) : AbstractTableModel() {
     private val log = LoggerFactory.getLogger(javaClass())!!
     val columns : MutableList<String> = ArrayList();
     val colmap : MutableMap<String,PropertyColumn<T,U>> = HashMap();
@@ -84,7 +84,7 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
     fun get(id:U) = interest[id]
 
 
-    override fun getRowCount(): Int =  if(interest.limit>0) Math.min(interest.size-interest.offset, interest.limit) else interest.size
+    override fun getRowCount(): Int  {log.info("rowcount ${interest.currentsize}"); return interest.currentsize}
     override fun getColumnCount(): Int = columns.size
     override fun getValueAt(rowIndex: Int, columnIndex: Int): Any? = colmap[columns[columnIndex]]!!.value(this[rowIndex])
 
@@ -96,7 +96,7 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
 
     override fun setValueAt(aValue: Any?, rowIndex: Int, columnIndex: Int) {
         val col = column(columns[columnIndex])!!
-        val json = Jsonifier.jsonify(interest.at(rowIndex)!!, interest.descriptor, listOf(col.property))
+        val json = Jsonifier.jsonify(interest.at(rowIndex)!! as LivingElement<Comparable<Any>>, interest.descriptor, listOf(col.property))
         Jsonifier.setValue(json.get("values") as ObjectNode, col.property, aValue)
         service.save(json)
         //col?.setter?.invoke(get(rowIndex), aValue)
@@ -105,6 +105,6 @@ class InterestTableModel<T:LivingElement<U>,U:Hashable>(val interest:Interest<T,
 
 }
 
-class PropertyColumn<T:LivingElement<U>,U:Hashable>(var name:String, val property:String, val getter:Method, val setter:Method?) {
+class PropertyColumn<T:LivingElement<U>,U:Comparable<U>>(var name:String, val property:String, val getter:Method, val setter:Method?) {
     fun value(v:T) : Any? = getter.invoke(v)
 }

@@ -68,7 +68,9 @@ import java.util.Date
 import java.text.SimpleDateFormat
 import ch.passenger.kinterest.Universe
 import ch.passenger.kinterest.DomainPropertyDescriptor
-import ch.passenger.kinterest.nullable
+import ch.passenger.kinterest.RelationFilter
+import org.neo4j.cypher.internal.commands.Has
+import rx.observables.ConnectableObservable
 
 /**
  * Created by svd on 12/12/13.
@@ -93,8 +95,8 @@ class Neo4jDbWrapper(val db: GraphDatabaseService) {
     val engine: ExecutionEngine = ExecutionEngine(db)
 }
 
-class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>, U> {
-    private val log = LoggerFactory.getLogger(javaClass<Neo4jDatastore<U>>())!!;
+class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : DataStore<Event<U>, U> {
+    private val log = LoggerFactory.getLogger(javaClass<Neo4jDatastore<T,U>>())!!;
     private val subject: PublishSubject<Event<U>> = PublishSubject.create()!!;
     private val engine = db.engine;
 
@@ -127,7 +129,8 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
                             val pd = d?.descriptors?.get(it.key())
                             if(d is DomainObjectDescriptor && pd is DomainPropertyDescriptor) {
                                 val value = pd.fromDataStore(it.value())
-
+                                log.info("${it.previouslyCommitedValue()} -> $value")
+                                if(value!=it.previouslyCommitedValue())
                                 subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
                                         it.key()!!, value, it.previouslyCommitedValue()))
                             }
@@ -137,7 +140,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
                 data.removedNodeProperties()?.forEach {
                     if (it?.entity()?.hasProperty("ID")?:false && it?.entity()?.hasProperty("KIND")?:false) {
                         val nkind = it.entity()?.getProperty("KIND")?.toString()
-                        if (nkind != null)
+                        if (nkind != null && it.previouslyCommitedValue()!=null)
                             subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
                                     it.key()!!, null, it.previouslyCommitedValue()))
                     }
@@ -147,7 +150,7 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
                     if (from.hasProperty("ID") && from.hasProperty("KIND")) {
                         val nkind = from?.getProperty("KIND")?.toString()
                         val toid = it.getEndNode()?.getProperty("ID")
-                        if (nkind != null)
+                        if (nkind != null && toid!=null)
                             subject.onNext(UpdateEvent(nkind, from?.getProperty("ID") as U, it.getType()?.name()!!, toid, null))
                     }
                 }
@@ -202,7 +205,22 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
 
     val exec = Executors.newFixedThreadPool(8)
 
-    override val observable: Observable<Event<U>> get() = subject.observeOn(ExecutorScheduler(exec))!!
+    override val observable: Observable<Event<U>> get() = subject.observeOn(ExecutorScheduler(exec))!!;
+
+    {
+        val obs = observable
+        obs.doOnEach {
+            log.info("produce $it")
+        }
+        obs.doOnError { log.error("error on datastore", it); it?.printStackTrace() }
+        obs.doOnCompleted {
+            log.warn("Observable in store stopping")
+        }
+        if(obs is ConnectableObservable<Event<U>>) {
+            obs.connect();
+        }
+
+    }
 
     public fun  node(id: U, kind: String): Node? {
         val m = mapOf("oid" to id)
@@ -247,8 +265,8 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
             l.forEach { log.info(it.dump()) }
             if (l.size > 1) throw IllegalStateException()
             rels.forEach {
-                val pd = descriptor.descriptors[it]!!
-                setRelation(id, values[it] as Hashable, null, it, pd.getter.nullable(), descriptor)
+                //val pd = descriptor.descriptors[it]!!
+                setRelation(id, values[it] as Comparable<Any>, null, it, descriptor.nullable(it), descriptor)
             }
             //log.info ("created: " + node.dump() )
             success()
@@ -296,34 +314,40 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         return el.getName()
     }
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
+
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Comparable<V>> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
         if (to == null) {
             deleteRelation(from, relation, desc)
             return
         }
-        val pars = mapOf("from" to from.id(), "to" to  to.id(), "optional" to optional)
+        val pars : Map<String,Any> = mapOf("from" to from.id(), "to" to  to.id(), "optional" to optional)
+        val dpd = desc.descriptors[relation]!!
+        val tot = labelForClass(dpd.classOf as Class<LivingElement<*>>)
+        val fk : String = desc.entity
+
         val q =
                 """
-        MATCH (n:${labelFor(from)} { ID : {from}}), (m:${labelFor(to)} { ID : {to})
-        MERGE (n)-[r:$relation]->(m)
-        ON CREATE SET r.OPTIONAL= {optional}
-        RETURN
+        MATCH (n:${fk}), (m:${tot})
+        WHERE n.ID = {from} and m.ID = {to}
+        CREATE UNIQUE (n)-[r:$relation {OPTIONAL: {optional}}]->(m)
+        RETURN r
         """
         tx {
             engine.execute(q, pars)
         }
+        if(to.id()!=old?.id())
         subject.onNext(UpdateEvent(desc.entity, from.id(), relation, to.id(), old?.id()))
     }
 
-    override fun <V : Hashable> setRelation(from: U, to: V?, old: V?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
+    override fun <V : Comparable<V>> setRelation(from: U, to: V?, old: V?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
         if (to == null) {
             deleteRelation(from, relation, desc)
             return
         }
         val dpd = desc.descriptors[relation]!!
-        val tot = labelForClass(dpd.classOf as Class<LivingElement<out Hashable>>)
+        val tot = labelForClass(dpd.classOf as Class<LivingElement<*>>)
         val fk : String = desc.entity
-        val pars = mapOf("from" to from, "to" to  to, "optional" to optional)
+        val pars : Map<String,Any> = mapOf("from" to from, "to" to  to, "optional" to optional)
         val q =
                 """
         MATCH (n:${fk}), (m:${tot})
@@ -335,12 +359,13 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
             log.info("executing\n$q\n$pars")
             engine.execute(q, pars)
         }
+        if(to!=old)
         subject.onNext(UpdateEvent(desc.entity, from, relation, to, old))
     }
 
 
-    override fun <V : Hashable> createRelation(fromKind: String, from: U, toKind: String, to: V, relation: String, optional: Boolean) {
-        val pars = mapOf("from" to from, "to" to  to, "optional" to optional)
+    override fun <V : Comparable<V>> createRelation(fromKind: String, from: U, toKind: String, to: V, relation: String, optional: Boolean) {
+        val pars : Map<String, Any> = mapOf("from" to from, "to" to  to, "optional" to optional)
         val q =
                 """
         MATCH (n:${fromKind}), (m:${toKind})
@@ -351,10 +376,11 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         tx {
             engine.execute(q, pars)
         }
+        if(to!=null)
         subject.onNext(UpdateEvent(fromKind, from, relation, to, null))
     }
 
-    override fun <V : Hashable> findRelation(fromKind: String, from: U, toKind: String, relation: String): V? {
+    override fun <V : Comparable<V>> findRelation(fromKind: String, from: U, toKind: String, relation: String): V? {
         val id = from
         val pars = mapOf("from" to id)
         val q =
@@ -380,16 +406,17 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         val pars = mapOf("from" to from.id())
         val q =
                 """
-        MATCH (n:${labelFor(from)} { ID : {from}})-[r:$relation {OPTIONAL = false}]->(to))]
+        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}})-[r:$relation {OPTIONAL = false}]->(to))]
         WHERE HAS(to.ID)
         DELETE r
         RETURN to.ID as ID
         """
-        var del: Hashable? = null
+        var del: Comparable<U>? = null
         tx {
             val res = engine.execute(q, pars)
-            del = res?.columnAs<Hashable>("ID")?.iterator()?.take(1) as Hashable?
+            del = res?.columnAs<Comparable<U>>("ID")?.iterator()?.take(1) as Comparable<U>?
         }
+        if(del!=null)
         subject.onNext(UpdateEvent(desc.entity, from.id(), relation, null, del))
 
     }
@@ -403,21 +430,22 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
         DELETE r
         RETURN to.ID as ID
         """
-        var del: Hashable? = null
+        var del: Comparable<Any>? = null
         tx {
             val res = engine.execute(q, pars)
-            del = res?.columnAs<Hashable>("ID")?.iterator()?.take(1) as Hashable?
+            del = res?.columnAs<Comparable<Any>>("ID")?.iterator()?.take(1) as Comparable<Any>?
         }
+        if(del!=null)
         subject.onNext(UpdateEvent(desc.entity, from, relation, null, del))
 
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor): Observable<V> {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Comparable<V>> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor): Observable<V> {
         val pars = mapOf("from" to from.id())
         val q =
                 """
-        MATCH (n:${labelFor(from)} { ID : {from}})-[r:$relation]->(m:${labelForClass(to as Class<LivingElement<*>>)})
+        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}})-[r:$relation]->(m:${labelForClass(to as Class<LivingElement<*>>)})
         RETURN m.ID as ID
         """
         return tx {
@@ -428,11 +456,11 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor) {
-        val pars = mapOf("from" to from.id(), "to" to  to.id(), "optional" to true)
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Comparable<V>> addRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor) {
+        val pars :Map<String,Any> = mapOf("from" to from.id(), "to" to  to.id(), "optional" to true)
         val q =
                 """
-        MATCH (n:${labelFor(from)} { ID : {from}}), (m:${labelFor(to)} { ID : {to})
+        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}}), (m:${labelFor(to as LivingElement<*>)} { ID : {to})
         MERGE (n)-[r:$relation]->(m)
         ON CREATE SET r.OPTIONAL= {optional}
         RETURN r
@@ -443,11 +471,11 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Hashable> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor) {
+    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Comparable<V>> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor) {
         val pars = mapOf("from" to from.id(), "to" to to.id())
         val q =
                 """
-        MATCH (n:${labelFor(from)} { ID : {from}})-[r:$relation {OPTIONAL=true}]->(m:${labelForClass(to as Class<LivingElement<*>>)}{ID:{to}})
+        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}})-[r:$relation {OPTIONAL=true}]->(m:${labelForClass(to as Class<LivingElement<*>>)}{ID:{to}})
         RETURN m.ID as ID
         """
         tx {
@@ -494,15 +522,18 @@ class Neo4jDatastore<U : Hashable>(val db: Neo4jDbWrapper) : DataStore<Event<U>,
 class Neo4jQuery(val q: String, val params: Map<String, Any>)
 
 class Neo4jFilterFactory {
-    fun<T : LivingElement<U>, U : Hashable> convert(f: ElementFilter<T, U>,
+    fun<T : LivingElement<U>, U : Comparable<U>> convert(f: ElementFilter<T, U>,
                                                     orderBy: Array<SortKey>, offset: Int, limit: Int): Neo4jQuery {
         val pars: MutableMap<String, Any> = HashMap()
         pars["skip"] = offset
         pars["limit"] = limit
+        val matches : MutableMap<String,String> = HashMap()
+        matches["n"] = "(n:${f.kind})"
+        val ac = clause<T,U,Comparable<Any?>>("n", f, pars, matches)
         val skip = " SKIP {skip}"
         val lim = if (limit > 0) " LIMIT {limit}" else ""
         val q = """
-        MATCH (n:${f.kind}) WHERE ${clause(f, pars)}
+        MATCH ${matches.values().makeString(", ")} WHERE ${ac}
         RETURN n.ID as ID
         ${createOrderBy(orderBy)}
         ${skip} ${lim}
@@ -526,32 +557,47 @@ class Neo4jFilterFactory {
     }
 
 
-    fun<T : LivingElement<U>, U : Hashable> clause(f: ElementFilter<T, U>, pars: MutableMap<String, Any>): String {
+    fun<T : LivingElement<U>, U:Comparable<U>,V:Comparable<V>> clause(on:String, f: ElementFilter<T, U>, pars: MutableMap<String, Any>, matches:MutableMap<String,String>): String {
         return when(f) {
-            is CombinationFilter -> combine(f, pars)
-            is PropertyFilter<T, U, *> -> prop(f, pars)
+            is CombinationFilter -> combine(on, f, pars, matches)
+            is PropertyFilter<T, U, *> -> prop(on, f, pars, matches)
+            is RelationFilter<T,U> -> relation(on, f, pars, matches)
             else -> "1=1"
         }
     }
 
-    fun<T : LivingElement<U>, U : Hashable> prop(f: PropertyFilter<T, U, *>, pars: MutableMap<String, Any> = HashMap()): String {
+    fun<T : LivingElement<U>, U : Comparable<U>> prop(on:String, f: PropertyFilter<T, U, *>, pars: MutableMap<String, Any> = HashMap(), matches:MutableMap<String,String>): String {
         val pn = "p${pars.size + 1}"
         log.info("prop: ${pn} ${if (f.property == "id") "ID" else f.property} ${f.relation} ${f.value}")
+        matches[on] = "($on:${f.kind})"
 
-        pars.put(pn, f.value)
+        //TODO: HACK, we need a strategic solution for this
+        if(f.value.javaClass.isEnum()) {
+            pars.put(pn, (f.value as Enum<*>).name())
+        }
+        else pars.put(pn, f.value)
         log.info("$pars")
-        //pars[pn] = f.value
-        return "(n.${if (f.property == "id") "ID" else f.property} ${op(f.relation)} { $pn })"
+        return "($on.${if (f.property == "id") "ID" else f.property} ${op(f.relation)} { $pn })"
     }
 
-    fun<T : LivingElement<U>, U : Hashable> combine(f: CombinationFilter<T, U>, pars: MutableMap<String, Any> = HashMap()): String {
+    fun<T : LivingElement<U>, U : Comparable<U>> relation(on:String, f: RelationFilter<T, U>, pars: MutableMap<String, Any> = HashMap(), matches:MutableMap<String,String>): String {
+        val par = "$on${matches.size()}"
+        matches[par] = "($par:${f.kind})"
+        if(f.relation==FilterRelations.FROM) {
+            return "(($on)<-[:${f.property}]-($par) AND ${clause<LivingElement<Comparable<Any>>,Comparable<Any>,Comparable<Any>>(par, f.f as ElementFilter<LivingElement<Comparable<Any>>,Comparable<Any>>, pars, matches) })"
+        } else {
+            return "(($on)-[:${f.property}]->($par) AND ${clause<LivingElement<Comparable<Any>>,Comparable<Any>,Comparable<Any>>(par, f.f as ElementFilter<LivingElement<Comparable<Any>>,Comparable<Any>>, pars, matches) })"
+        }
+    }
+
+    fun<T : LivingElement<U>, U : Comparable<U>> combine(on:String, f: CombinationFilter<T, U>, pars: MutableMap<String, Any> = HashMap(), matches:MutableMap<String,String>): String {
         val op = op(f.relation)
         val sb = StringBuilder()
         f.combination.forEach {
             if (sb.length() > 0) {
                 sb.append(" $op ")
             }
-            sb.append("(").append(clause(it, pars)).append(")")
+            sb.append("(").append(clause<T,U,Comparable<Any>>(on, it, pars, matches)).append(")")
         }
         return sb.toString()
     }
@@ -590,8 +636,8 @@ public fun Node.dump(): String {
 }
 
 
-abstract class Neo4jDomainObject(val oid: Hashable, val store: Neo4jDatastore<*>, protected val kind: String, private val node: Node) : DomainObject {
-    private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject>())!!
+abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDatastore<Event<T>,T>, protected val kind: String, private val node: Node) : DomainObject {
+    private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject<T>>())!!
     protected fun<T> prop(name:String, pd:DomainPropertyDescriptor): T? = store.tx {
         val n = if (name == "id") "ID" else name
         if(node().hasProperty(n)) {

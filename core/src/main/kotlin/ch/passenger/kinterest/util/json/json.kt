@@ -25,7 +25,7 @@ import ch.passenger.kinterest.InterestConfigEvent
 public object Jsonifier {
     private val log = LoggerFactory.getLogger(this.javaClass)!!
     val om: ObjectMapper = ObjectMapper()
-    fun jsonify(value: LivingElement<*>, desc: DomainObjectDescriptor, props: Iterable<String>): ObjectNode {
+    fun jsonify(value: LivingElement<Comparable<Any>>, desc: DomainObjectDescriptor, props: Iterable<String>): ObjectNode {
         val json = om.createObjectNode()!!
         json.put("entity", desc.entity)
         val id = value.id()
@@ -46,27 +46,28 @@ public object Jsonifier {
         return json
     }
 
-    fun jsonify(event: Event<*>): ObjectNode {
+    fun jsonify<U:Comparable<U>>(event: Event<U>): ObjectNode {
         val on = om.createObjectNode()!!
         on.put("kind", event.kind.name())
         on.put("sourceType", event.sourceType)
         when(event) {
-            is ElementEvent<*> -> serialise(on, event)
-            is OrderEvent<*> -> {
+            is ElementEvent<U> -> serialise(on, event)
+            is OrderEvent<U> -> {
                 val an = om.createArrayNode()!!
                 on.put("interest", event.interest)
                 event.order.forEach { an.add(om.valueToTree<JsonNode>(it)) }
                 on.put("order", an)
             }
-            is InterestEvent<*> -> {
+            is InterestEvent<U> -> {
                 on.put("interest", event.interest)
                 on.put("id", om.valueToTree<JsonNode>(event.id))
             }
-            is InterestConfigEvent<*> -> {
+            is InterestConfigEvent<U> -> {
                 on.put("interest", event.interest)
                 on.put("limit", event.limit)
                 on.put("offset", event.offset)
-                on.put("estimatedsize", event.size)
+                on.put("estimatedsize", event.esitmated)
+                on.put("currentsize", event.currentsize)
                 val an = om.createArrayNode()!!
                 event.orderBy.forEach { an.add(om.valueToTree<JsonNode>(it)) }
                 on.put("orderBy", an)
@@ -76,10 +77,10 @@ public object Jsonifier {
         return on
     }
 
-    fun serialise(on: ObjectNode, event: ElementEvent<*>) {
+    fun serialise<U:Comparable<U>>(on: ObjectNode, event: ElementEvent<U>) {
         on.put("id", om.valueToTree<JsonNode>(event.id))
         when(event) {
-            is UpdateEvent<*, *> -> {
+            is UpdateEvent<U, *> -> {
                 setValue(on, "property", event.property)
                 setValue(on, "value", event.value)
                 setValue(on, "old", event.old)

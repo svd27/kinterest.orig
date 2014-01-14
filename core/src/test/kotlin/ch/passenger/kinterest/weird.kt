@@ -15,17 +15,17 @@ class WeirdB(override val id:Long, val x:Double) : LivingElement<Long> {
 }
 
 
-fun<X:LivingElement<Y>,U:LivingElement<V>,Y:Hashable,V:Hashable> concat(a:X,b:U) : String = "${a.id}${b.id}"
+fun<X:LivingElement<Y>,U:LivingElement<V>,Y:Identifier,V:Identifier> concat(a:X,b:U) : String = "${a.id}${b.id}"
 
-fun<X:LivingElement<Y>,U:LivingElement<V>,Y:Hashable,V:Hashable> combine(a:X,b:U) : Pair<Y,V>{
+fun<X:LivingElement<Y>,U:LivingElement<V>,Y:Identifier,V:Identifier> combine(a:X,b:U) : Pair<Y,V>{
     print("${a.id} and ${b.id}")
     return a.id to b.id
 }
 
-class ADoer<X:LivingElement<Y>,Y:Hashable>() {
-    fun<U:LivingElement<V>,V:Hashable> concat(a:X,b:U) : String = "${a.id}${b.id}"
+class ADoer<X:LivingElement<Y>,Y:Identifier>() {
+    fun<U:LivingElement<V>,V:Identifier> concat(a:X,b:U) : String = "${a.id}${b.id}"
 
-    fun<U:LivingElement<V>,V:Hashable> combine(a:X,b:U) : Pair<Y,V>{
+    fun<U:LivingElement<V>,V:Identifier> combine(a:X,b:U) : Pair<Y,V>{
         print("${a.id} and ${b.id}")
         return a.id to b.id
     }

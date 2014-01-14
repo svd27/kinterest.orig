@@ -37,13 +37,14 @@ import ch.passenger.kinterest.LivingElement
 import ch.passenger.kinterest.util.json.Jsonifier
 import ch.passenger.kinterest.Universe
 import javax.persistence.Entity
-import ch.passenger.kinterest.nullable
 import ch.passenger.kinterest.unique
 import java.io.File
 import java.nio.file.Files
 import java.io.FileInputStream
 import java.io.ByteArrayInputStream
 import ch.passenger.kinterest.label
+import java.util.ArrayList
+import ch.passenger.kinterest.ElementFilter
 
 
 /**
@@ -87,12 +88,12 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
         log.info("WS CONNECT: $sess")
         kisession.events = this@EventSocket
     }
-    override fun publish(events: Iterable<Event<out Hashable>>) {
+    override fun publish(events: Iterable<Event<Comparable<Any>>>) {
         val om = ObjectMapper()
         val ja: ArrayNode = om.createArrayNode()!!
         events.forEach {
             val an: ArrayNode = ja
-            an.add(Jsonifier.jsonify(it))
+            an.add(Jsonifier.jsonify<Comparable<Any>>(it as Event<Comparable<Any>>))
         }
         send(ja.toString()!!)
     }
@@ -112,10 +113,17 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
         log.info("ENTITIES CONNECT: $sess")
         kisession.entities = this
     }
-    override fun publish(entities: Iterable<out LivingElement<out Hashable>>) {
+
+    override fun publish(entities: Iterable<LivingElement<Comparable<Any>>>) {
         val ja = om.createArrayNode()!!
 
-        entities.map { Jsonifier.jsonify(it, it.descriptor(), it.descriptor().properties) }.filterNotNull().forEach { ja.add(it) }
+        entities.map {
+            Jsonifier.jsonify(
+                    it as LivingElement<Comparable<Any>>,
+                    it.descriptor(),
+                    it.descriptor().properties)
+        }.filterNotNull().
+        forEach { ja.add(it) }
 
         //val jsonNode = om.valueToTree<JsonNode>(entities)
         log.info("publish $ja")
@@ -127,6 +135,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 class AppServlet(app: KIApplication) : KIServlet(app) {
     fun init(ctx: ServletContextHandler) {
         ctx.addServlet(ServletHolder(this), "/${app.name}")
+        ctx.addServlet(ServletHolder(DumperServlet(app)), "/${app.name}/dump")
         ctx.addServlet(ServletHolder(StaticServlet(File("/Users/svd/dev/proj/kotlin/kIjs/classes/artifacts/kjs"))), "/${app.name}/static/*")
         app.descriptors.forEach {
             log.info("service .... $it")
@@ -160,6 +169,7 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
             val entity = om.createObjectNode()!!
             entity.put("entity", it.entity)
             val pa = om.createArrayNode()!!
+            val dd = it
             it.properties.forEach {
                 p -> val pd = it.descriptors[p]!!
                 val pn = om.createObjectNode()!!
@@ -171,7 +181,7 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
                 } else {
                     pn.put("type", pd.getter.getReturnType()?.getName())
                 }
-                pn.put("nullable", pd.getter.nullable())
+                pn.put("nullable", dd.nullable(p))
                 pn.put("unique", pd.getter.unique())
                 pn.put("readonly", pd.setter==null)
                 pn.put("enum", pd.enum)
@@ -223,8 +233,8 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             val off : Int = Integer.parseInt(mb.group(2)!!)
             val buffer : Int = Integer.parseInt(mb.group(3)!!)
 
-            service.buffer(interest, buffer)
-            service.offset(interest, off)
+            service.buffer(interest, off, buffer)
+
             ack(resp)
             return
         }
@@ -233,7 +243,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
         if(madd.matches()) {
             val interest : Int = Integer.parseInt(madd.group(1)!!)
             val eid : Long = java.lang.Long.parseLong(madd.group(2)!!)
-            service.add(interest, eid)
+            service.add(interest, eid as Comparable<Any>)
             ack(resp)
             return
         }
@@ -242,7 +252,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
         if(mrem.matches()) {
             val interest : Int = Integer.parseInt(mrem.group(1)!!)
             val eid : Long = java.lang.Long.parseLong(mrem.group(2)!!)
-            service.remove(interest, eid)
+            service.remove(interest, eid as Comparable<Any>)
             ack(resp)
             return
         }
@@ -303,7 +313,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
                     if(ses!=null) {
                         val pub = ses.entities
                         if(pub!=null)
-                        service.galaxy.retriever(on.map { it.longValue() }, pub)
+                        service.galaxy.retriever(on.map { it.longValue() as Comparable<Any> }, pub)
                         else {
                             val context = IllegalStateException("exception to support tracking")
                             log.warn("retrieval request with no defined publisher", context)}
@@ -368,7 +378,6 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
 abstract class KIServlet(val app: KIApplication) : HttpServlet() {
     protected val om: ObjectMapper = ObjectMapper()
     protected open val log: Logger = LoggerFactory.getLogger(this.javaClass)!!
-    private val currentSession: ThreadLocal<KISession> = ThreadLocal()
     private val currentApp: ThreadLocal<KIApplication> = ThreadLocal()
     override fun service(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
@@ -382,7 +391,6 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
             httpSession.setAttribute(APPLICATION_KEY, app)
         }
         val s = httpSession.getAttribute(SESSION_KEY)!! as KISession
-        currentSession.set(s)
         currentApp.set(app)
         s.current()
         log.info("service ${req.getPathInfo()}")
@@ -400,6 +408,38 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
     class object {
         val SESSION_KEY = "KISESSION"
         val APPLICATION_KEY = "KIAPP"
+    }
+}
+
+class DumperServlet(app:KIApplication) : KIServlet(app) {
+    override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
+        val om = ObjectMapper()
+        val session = KISession.current()
+        val dump = om.createObjectNode()!!
+        dump.put("session", session!!.id)
+        dump.put("principal", session!!.principal!!.principal)
+        dump.put("token", session!!.principal!!.token)
+        val ia = om.createArrayNode()!!
+        session.allInterests {
+            val ain = om.createObjectNode()!!
+            val f = it.filter as ElementFilter<*,*>
+            ain.put("name", it.name)
+            ain.put("id", it.id)
+            ain.put("filter", f.toJson())
+            ain.put("orderBy", om.valueToTree<JsonNode>(it.orderBy))
+            ain.put("limit", it.limit)
+            ain.put("offset", it.offset)
+            ain.put("currentsize", it.currentsize)
+            ain.put("estimatedsize", it.estimatedsize)
+            val order = ArrayList<Comparable<*>>()
+            it.orderDo { order.add(it as Comparable<*>) }
+            ain.put("order", om.valueToTree<JsonNode>(order))
+            ia.add(ain)
+        }
+        dump.put("interests", ia)
+        resp?.setContentType("application/json")
+        resp?.getWriter()?.write(om.writeValueAsString(dump)!!)
+        resp?.flushBuffer()
     }
 }
 

@@ -2,7 +2,7 @@
 import ch.passenger.kinterest.LivingElement
 import ch.passenger.kinterest.Galaxy
 import ch.passenger.kinterest.DomainObjectDescriptor
-
+/*
 class TestAImpl(val id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<Long>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject(id, store, TestAImpl.kind,node), ch.passenger.kinterest.testdomain.TestA, ch.passenger.kinterest.LivingElement<Long> {
   override fun id() : Long = id
   override protected val subject = subject()
@@ -10,11 +10,11 @@ class TestAImpl(val id:Long, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<L
     override fun galaxy(): Galaxy<out LivingElement<Long>, out Long> = TestAImpl.galaxy
     override fun descriptor(): DomainObjectDescriptor = galaxy().descriptor
     override var ami : String?
-get() = prop("ami", javaClass<String>())
-set(v) = prop("ami", v)
+get() = prop("ami",galaxy().descriptor.descriptors["ami"]!!, javaClass<String>())
+set(v) = prop("ami", galaxy().descriptor.descriptors["ami"]!!, v)
 override var lots : Double
-get() = prop("lots", javaClass<Double>())!!
-set(v) = prop("lots", v)
+get() = prop("lots", galaxy().descriptor.descriptors["lots"]!!, javaClass<Double>())!!
+set(v) = prop("lots", galaxy().descriptor.descriptors["lots"]!!, v)
 override val weight : ch.passenger.kinterest.testdomain.TestB?
                 get() {
                  val oid = TestAImpl.galaxy.relation(id(), javaClass<ch.passenger.kinterest.testdomain.TestB>(), "weight")
@@ -118,4 +118,4 @@ public fun boostrapTestB(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 boostrapTestB(db)
 
         }
-        
+        */

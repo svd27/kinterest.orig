@@ -6,12 +6,18 @@ import java.util.regex.Pattern
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.JsonNode
+import java.util.concurrent.TimeUnit
+import ch.passenger.kinterest.util.json.EnumDecoder
+import java.util.Date
+import java.text.DateFormat
+import java.text.SimpleDateFormat
+import ch.passenger.kinterest.util.firstThat
 
 /**
  * Created by svd on 14/12/13.
  */
-trait ElementFilter<T,U> where T:LivingElement<U>, U:Hashable {
-    fun accept(element:T) : Boolean
+trait ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
+    public fun accept(element:T) : Boolean
     val relation : FilterRelations
     val target : Class<T>
 
@@ -27,7 +33,7 @@ trait ElementFilter<T,U> where T:LivingElement<U>, U:Hashable {
     fun toJson() : ObjectNode
 }
 
-trait CombinationFilter<T:LivingElement<U>,U:Hashable> : ElementFilter<T,U> {
+trait CombinationFilter<T:LivingElement<U>,U:Comparable<U>> : ElementFilter<T,U> {
    val combination : Iterable<ElementFilter<T,U>>
 
     override fun toJson(): ObjectNode {
@@ -44,9 +50,9 @@ trait CombinationFilter<T:LivingElement<U>,U:Hashable> : ElementFilter<T,U> {
 }
 
 
-public enum class FilterRelations {EQ NEQ NOT AND OR LT GT LTE GTE IN LIKE NOTLIKE STATIC}
+public enum class FilterRelations {EQ NEQ NOT AND OR LT GT LTE GTE IN LIKE NOTLIKE STATIC FROM TO}
 
-abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>, val property:String, val value:V) : ElementFilter<T,U> where T:LivingElement<U>, U:Hashable {
+abstract class PropertyFilter<T,U:Comparable<U>,V:Comparable<V>>(override val target:Class<T>, val property:String, val value:V) : ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
     private var method : Method? = null;
     private var _kind :String?= null
     override val kind : String get() {
@@ -67,7 +73,7 @@ abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>,
             if(method==null) throw IllegalStateException()
         }
         val current = method?.invoke(element) as V
-        var av : Number? = null
+        var av : Any? = null
 
         //TODO: this kinda casting is really crappy,
         //neccessary coz filters come in via json so proper casting isnt done
@@ -81,12 +87,28 @@ abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>,
             }
         }
 
+        if(current is Date) {
+            when(value) {
+                is Number -> av = dates.parse("$value")
+                is String -> av = dates.parse(value)
+                is Date -> av = value
+                else -> throw IllegalArgumentException("cant interpret $value as date")
+            }
+        }
+
+        if(current.javaClass.isEnum()) {
+            if (!value.javaClass.isEnum())
+                if (value is String)
+                    av = EnumDecoder.decode(current.javaClass, value as String)
+                else throw IllegalArgumentException("cant interpret $value as enum")
+        }
+
         return compare(current, if(av!=null) av else value)
     }
 
     protected abstract fun compare(current:V, value:Any?) : Boolean
 
-    private class EQ<T,U:Hashable,V:Comparable<V>>(target:Class<T>,property:String, value:V) : PropertyFilter<T,U,V>(target,property, value) where T:LivingElement<U>  {
+    private class EQ<T,U:Comparable<U>,V:Comparable<V>>(target:Class<T>,property:String, value:V) : PropertyFilter<T,U,V>(target,property, value) where T:LivingElement<U>  {
         override val relation: FilterRelations = FilterRelations.EQ
 
         override fun compare(current: V, v:Any?): Boolean = current==v
@@ -102,11 +124,18 @@ abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>,
         return json
     }
     class object {
-        public fun eq<T:LivingElement<U>,U:Hashable,V:Comparable<V>>(target:Class<T>,p:String, value:V) : PropertyFilter<T,U,V> = EQ(target, p, value)
+        val dates : DateFormat = SimpleDateFormat("yyyyMMddHHmmssSSS")
+        public fun eq<T:LivingElement<U>,U:Comparable<U>,V:Comparable<V>>(target:Class<T>,p:String, value:V) : PropertyFilter<T,U,V> = EQ(target, p, value)
     }
 }
 
-class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U> {
+abstract class RelationFilter<T:LivingElement<U>,U:Comparable<U>>(val property:String, val f:ElementFilter<out LivingElement<out Comparable<Any>>,out Comparable<Any>>) : ElementFilter<T,U> {
+
+}
+
+//class FromFilter<T:LivingElement<U>,U:Hashable>(val ) : RelationFilter()
+
+class FilterFactory<T,U:Comparable<U>>(val target:Class<T>, val descriptor:DomainObjectDescriptor) where T : LivingElement<U> {
     fun<V:Comparable<V>> neq(property:String, value:V) : PropertyFilter<T,U,V> {
         val n : jet.Number
         return binrel<V>(property, value, FilterRelations.NEQ) {
@@ -207,6 +236,63 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
         }
     }
 
+    fun from(property:ObjectNode, filter:ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>) : RelationFilter<T,U> {
+        return object : RelationFilter<T,U>(property["property"]!!.textValue()!!, filter) {
+            override fun accept(element: T): Boolean {
+                val entity = property["entity"]!!.textValue()!!
+                val sp = property["property"]!!.textValue()!!
+                val tg = Universe.galaxy<LivingElement<Comparable<Any>>,Comparable<Any>>(entity)!!
+                val ff = tg.filterFactory as FilterFactory<LivingElement<Comparable<Any>>,Comparable<Any>>
+
+
+                var tf = filter as ElementFilter<LivingElement<Comparable<Any>>, Comparable<Any>>
+                val bf = eq<Comparable<Any>>("id", element.id() as Comparable<Any>) as ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>
+                tf = ff.and(ff.to(sp, bf) , tf)
+                val res = tg.filter(tf, array(), 0, 1).timeout(1000, TimeUnit.MILLISECONDS)!!.toBlockingObservable()!!.toFuture()!!.get()
+                //TODO: just return res != null
+                if(res!=null) {
+                    val oe = res.descriptor().get(res, sp) as LivingElement<Comparable<Any>>
+                    return oe.id() == element.id()
+                }
+                return false
+            }
+            override val relation: FilterRelations = FilterRelations.FROM
+            override val target: Class<T> = this@FilterFactory.target
+            override val kind: String = this@FilterFactory.descriptor.entity
+            override fun toJson(): ObjectNode {
+                val om = ObjectMapper()
+                val json = om.createObjectNode()!!
+                json["relation"] = om.valueToTree(FilterRelations.FROM.name())
+                json["filter"] = f.toJson()
+                return json
+            }
+        }
+    }
+
+    fun to(property:String, filter:ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>) : RelationFilter<T,U> {
+        return object : RelationFilter<T,U>(property, filter) {
+            override fun accept(element: T): Boolean {
+                val fk = element.galaxy().descriptor.get(element, property) as LivingElement<*>
+                //val fe = Universe.get(f.kind, fk.id()) as LivingElement<*>
+
+                return filter.accept(fk as LivingElement<Comparable<Any>>)
+            }
+
+            override val relation: FilterRelations = FilterRelations.TO
+            override val target: Class<T> = this@FilterFactory.target
+            override val kind: String = this@FilterFactory.descriptor.entity
+
+            override fun toJson(): ObjectNode {
+                val om = ObjectMapper()
+                val json = om.createObjectNode()!!
+                json["relation"] = om.valueToTree(FilterRelations.TO.name())
+                json["filter"] = f.toJson()
+                return json
+            }
+        }
+    }
+
+
     fun staticFilter(i:Interest<T,U>) : ElementFilter<T,U> = StaticFilter(i)
 
     fun fromJson(json:ObjectNode) : ElementFilter<T,U> {
@@ -256,20 +342,45 @@ class FilterFactory<T,U:Hashable>(val target:Class<T>) where T : LivingElement<U
             FilterRelations.NOT -> {
                 return not(fromJson(json["operand"]!! as ObjectNode))
             }
+            FilterRelations.FROM -> {
+                val prop = json["qname"] as ObjectNode
+                val source = prop["entity"]!!.textValue()!!
+                val sfj = json["filter"]!! as ObjectNode
+                sfj["entity"] = om.valueToTree(source)
+                val sf = Universe.galaxy<LivingElement<Comparable<Any>>,Comparable<Any>>(source)!!.filterFactory.fromJson(sfj)
+                return from(prop, sf as ElementFilter<LivingElement<out Comparable<Any>>, out Comparable<Any>>)
+            }
+            FilterRelations.TO -> {
+                val prop = json["property"]!!.textValue()!!
+
+                return to(prop, relationFilter(json, om, prop))
+            }
             else -> throw IllegalArgumentException("can not creat filter from $json")
 
         }
+
+
+    }
+
+    fun relationFilter(json:ObjectNode, om:ObjectMapper, prop:String) :  ElementFilter<LivingElement<out Comparable<Any>>, out Comparable<Any>> {
+        val prop = json["property"]!!.textValue()!!
+        val ff = json["filter"]!! as ObjectNode
+        val pd = descriptor.descriptors[prop]!!
+        val entity = pd.classOf.entityName()
+        ff["entity"] = om.valueToTree(entity)
+        return Universe.galaxy<LivingElement<Comparable<Any>>,Comparable<Any>>(entity)!!.filterFactory.fromJson(ff) as  ElementFilter<LivingElement<out Comparable<Any>>, out Comparable<Any>>
     }
 
     fun resolveProperty(om:ObjectMapper, prop:String, node:JsonNode) : Comparable<Any> {
-        val cls : Class<*>? = target.getMethods().filter {it.getName()=="id" || it.getName()=="set${prop.capitalize()}" || it.getName()=="is${prop.capitalize()}"}.fold<Method,Class<*>?>(null) {
-            (cls, m) -> m.getReturnType()
-        }
+        val meth = target.getMethods().firstThat {(it.getName()=="id"&& prop=="id" ) || it.getName()=="get${prop.capitalize()}" || it.getName()=="is${prop.capitalize()}"}
+        val cls : Class<*>? = meth?.getReturnType()
+
+        log.info("node $node cls $cls target: $target")
         return om.treeToValue<Any>(node, cls!! as Class<Any>)!! as Comparable<Any>
     }
 }
 
-class StaticFilter<T:LivingElement<U>,U:Hashable>(private val interest:Interest<T,U>) : ElementFilter<T,U> {
+class StaticFilter<T:LivingElement<U>,U:Comparable<U>>(private val interest:Interest<T,U>) : ElementFilter<T,U> {
     override val relation: FilterRelations = FilterRelations.STATIC
     override val target: Class<T> = interest.target
     override val kind: String = interest.sourceType

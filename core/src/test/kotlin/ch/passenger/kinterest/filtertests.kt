@@ -4,6 +4,7 @@ import java.util.ArrayList
 import org.junit.Test
 import org.slf4j.LoggerFactory
 import rx.subjects.PublishSubject
+import rx.Observable
 
 /**
  * Created by svd on 13/12/13.
@@ -16,9 +17,14 @@ enum class FTColors() : Comparable<FTColors> {red green blue
 class FTestA(val id:Long, val color:FTColors) : LivingElement<Long> {
     override val subject: PublishSubject<UpdateEvent<Long, Any?>> = PublishSubject.create()!!
     override fun id(): Long = id
+
+    override fun galaxy(): Galaxy<FTestA,Long> = Universe.galaxy<FTestA,Long>("FTestA")!!
+    override fun descriptor(): DomainObjectDescriptor {
+        throw UnsupportedOperationException()
+    }
 }
 
-fun<T:LivingElement<U>,U:Hashable> Iterable<T>.filter(f:ElementFilter<T,U>) : Iterable<T> {
+fun<T:LivingElement<U>,U:Comparable<U>> Iterable<T>.filter(f:ElementFilter<T,U>) : Iterable<T> {
     return filter { f.accept(it) }
 }
 
@@ -41,7 +47,7 @@ class FilterTests {
         assert(reds==3)
         assert(greens==3)
         assert(blues==5)
-        val ffac = FilterFactory(javaClass<FTestA>())
+        val ffac = FilterFactory(javaClass<FTestA>(), DomainObjectDescriptor(javaClass<FTestA>()))
         val lb = l.filter<FTestA,Long>(ffac.eq("color", FTColors.blue))
         assert(lb.toList().size==blues)
         val lr = l.filter<FTestA,Long>(ffac.eq("color", FTColors.red))
@@ -69,7 +75,7 @@ class FilterTests {
         assert(reds==3)
         assert(greens==3)
         assert(blues==5)
-        val ffac = FilterFactory(javaClass<FTestA>())
+        val ffac = FilterFactory(javaClass<FTestA>(), DomainObjectDescriptor(javaClass<FTestA>()))
         val llt = l.filter(ffac.lt("id", 5.toLong()))
         llt.forEach { log.info("${it.id} ${it.color}")
             assert(it.id<5) }

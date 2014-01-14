@@ -47,13 +47,13 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     fun current() = current.set(this)
     fun detach() = current.set(null)
     val id = KISession.nid()
-    val interests : MutableSet<Interest<*,*>> = HashSet()
+    val interests : MutableSet<Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>> = HashSet()
     val subjects : MutableMap<Int,Subscription> = HashMap()
     var events : EventPublisher? = null
     set(v) {
         if($events==null && v!=null) {
             interests.forEach {
-                val subscription = it.observable.subscribe{events?.publish(listOf(it!!))}!!
+                val subscription = it.observable.subscribe{if(it is Event<*>) events?.publish(listOf(it as Event<Comparable<Any>>))}!!
                 subjects[it.id] = subscription
             }
         } else if($events!=null&&v==null) {
@@ -64,10 +64,10 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     }
     var entities : EntityPublisher? = null
 
-    fun addInterest(i:Interest<*,*>) {
+    fun addInterest(i:Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>) {
         interests.add(i)
         if(events!=null) {
-            subjects[i.id] = i.observable.subscribe{events?.publish(listOf(it!!))}!!
+            subjects[i.id] = i.observable.subscribe{events?.publish(listOf(it!! as Event<Comparable<Any>>))}!!
         }
     }
     fun removeInterest(i:Interest<*,*>) {
@@ -79,6 +79,11 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
         events = null
         entities = null
         interests.forEach { it.close() }
+    }
+
+    fun allInterests(cb:(Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>)->Unit) {
+        log.info("iterating ${interests.size()} interests")
+        interests.forEach { cb(it as Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>) }
     }
 
 
@@ -116,43 +121,49 @@ public open class KIService(name: String) {
     }
 }
 
-public open class InterestService<T : LivingElement<U>, U : Hashable>(val galaxy: Galaxy<T, U>) : KIService(galaxy.descriptor.entity) {
+public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val galaxy: Galaxy<T, U>) : KIService(galaxy.descriptor.entity) {
     private val log = LoggerFactory.getLogger(this.javaClass)!!
     public fun create(name: String = ""): Int  {
         val interest = galaxy.interested(name)
-        KISession.current()!!.addInterest(interest as Interest<*,*>)
+        KISession.current()!!.addInterest(interest as Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>)
+        log.info("${KISession.current()!!.id} created interest ${interest.id} now: ${KISession.current()?.interests?.size}")
         return interest.id
     }
     public fun delete(id: Int): Unit = galaxy.uninterested(id)
     public fun filter(id: Int, filter: ObjectNode): Unit {
         log.info("$filter")
-        val interest = galaxy.interests[id]
+        galaxy.withInterestDo {
+            val interest = it[id]
 
-        if (interest != null) {
-            if (filter["relation"]!!.textValue()!! == FilterRelations.STATIC.name()) {
-                interest.filter = StaticFilter(interest)
-                return
+            if (interest != null) {
+                if (filter["relation"]!!.textValue()!! == FilterRelations.STATIC.name()) {
+                    interest.filter = StaticFilter(interest)
+                } else {
+                    val f = galaxy.filterFactory.fromJson(filter)
+                    interest.filter = f
+                }
             }
-            val f = galaxy.filterFactory.fromJson(filter)
-            interest.filter = f
         }
+
     }
     public fun orderBy(id:Int, order:ArrayNode) {
-        val i = galaxy.interests[id]!!
-        log.info("$order")
-        i.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.copyToArray()
-    }
-    public fun buffer(id: Int, limit: Int) {
-        val interest = galaxy.interests[id]
-        if (interest != null) {
-            interest.limit = limit
+        galaxy.withInterestDo {
+            val i = it[id]
+            if(i is Interest) {
+                log.info("$order")
+                i.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.copyToArray()
+            } else {
+                log.warn("cant order dead interest $id")
+            }
         }
-    }
 
-    public fun offset(id: Int, offset: Int) {
-        val interest = galaxy.interests[id]
-        if (interest != null) {
-            interest.offset = offset
+    }
+    public fun buffer(id: Int, offset:Int, limit: Int) {
+        galaxy.withInterestDo {
+            val interest = it[id]
+            if (interest != null) {
+                interest.buffer(offset, limit)
+            }
         }
     }
 
@@ -177,16 +188,16 @@ public open class InterestService<T : LivingElement<U>, U : Hashable>(val galaxy
         session!!.app.retriever.execute {
             ids.forEach {
                 val value = galaxy.get(it)
-                if(value!=null) session.entities?.publish(listOf(value))
+                if(value!=null) session.entities?.publish(listOf(value as LivingElement<Comparable<Any>>))
             }
         }
     }
 
-    public fun add(id:Int, eid:Hashable) {
+    public fun add(id:Int, eid:Comparable<Any>) {
         KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.add(eid as U) }
     }
 
-    public fun remove(id:Int, eid:Hashable) {
+    public fun remove(id:Int, eid:Comparable<Any>) {
         KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.remove(eid as U) }
     }
 
@@ -197,9 +208,9 @@ public open class InterestService<T : LivingElement<U>, U : Hashable>(val galaxy
 
 
 public trait EventPublisher {
-    fun publish(events: jet.Iterable<Event<*>>)
+    fun publish(events: jet.Iterable<Event<Comparable<Any>>>)
 }
 
 public trait EntityPublisher {
-    fun publish(entities: jet.Iterable<LivingElement<*>>)
+    fun publish(entities: jet.Iterable<LivingElement<Comparable<Any>>>)
 }

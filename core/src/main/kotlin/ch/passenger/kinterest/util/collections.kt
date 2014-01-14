@@ -12,7 +12,7 @@ import rx.Observable
 /**
  * Created by svd on 15/12/13.
  */
-abstract class ObservableList<T:LivingElement<U>,U:Hashable> : AbstractList<T>(), MutableList<T> {
+abstract class ObservableList<T:LivingElement<U>,U:Comparable<Any>> : AbstractList<T>(), MutableList<T> {
     public abstract val observable : Observable<Event<U>>
 
     override abstract fun add(e: T): Boolean
@@ -20,9 +20,9 @@ abstract class ObservableList<T:LivingElement<U>,U:Hashable> : AbstractList<T>()
     override abstract fun remove(o: Any?): Boolean
 }
 
-class InterestList<T:LivingElement<U>,U:Hashable>(protected val interest:Interest<T,U>) : ObservableList<T,U>() {
-    override fun size(): Int = interest.size
-    override fun get(index: Int): T = interest.at(index)
+class InterestList<T:LivingElement<U>,U:Comparable<Any>>(protected val interest:Interest<T,U>) : ObservableList<T,U>() {
+    override fun size(): Int = interest.currentsize
+    override fun get(index: Int): T = interest.at(index)!!
 
 
     override fun add(e: T): Boolean = interest.add(e.id())

@@ -17,3 +17,8 @@ fun<K,V> Map<K,V>.filter(predicate: (Pair<K,V>)->Boolean) : Map<K,V> {
     this.entrySet().forEach { if(predicate(Pair(it.key,it.value))) res[it.key] = it.value}
     return res
 }
+
+fun<T> Array<T>.firstThat(predicate:(T)->Boolean) : T? {
+    for(t in this) if(predicate(t)) return t
+    return null
+}

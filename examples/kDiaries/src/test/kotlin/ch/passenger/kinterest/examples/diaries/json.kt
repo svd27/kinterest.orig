@@ -13,6 +13,7 @@ import ch.passenger.kinterest.ElementEvent
 import rx.Observer
 import java.util.logging.Logger
 import java.util.logging.Level
+import ch.passenger.kinterest.entityName
 
 /**
  * Created by svd on 19/12/13.
@@ -32,9 +33,9 @@ class DiaryJsonTests {
 
     Test
     fun jsonify() {
-        val guser = Universe.galaxy(javaClass<DiaryOwner>())!!
+        val guser = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
 
-        val ff= FilterFactory<DiaryOwner,Long>(javaClass<DiaryOwner>())
+        val ff= FilterFactory<DiaryOwner,Long>(javaClass<DiaryOwner>(), guser.descriptor)
         val i1 = guser.interested("test")
         i1.filter = ff.gte("id", 0.toLong())
         val obs = object : Observer<ElementEvent<Long>> {
@@ -47,7 +48,7 @@ class DiaryJsonTests {
             }
             override fun onNext(args: ElementEvent<Long>?) {
                 val el = guser.get(args!!.id);
-                println(Jsonifier.jsonify(el!!, guser.descriptor).asText())
+                //println(Jsonifier.jsonify(el!!, guser.descriptor).asText())
             }
         }
         i1.observable.filter { println(">>> $it <<<"); it is ElementEvent<Long>}?.cast(javaClass<ElementEvent<Long>>())?.subscribe(obs)

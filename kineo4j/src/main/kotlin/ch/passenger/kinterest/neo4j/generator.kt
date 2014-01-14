@@ -149,7 +149,9 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
 
                 if (!it.ro) {
                     body.append("""
-                    set(v) {${cn}Impl.galaxy.setRelation(id(), ${it.name}, "${it.name}", ${it.nullable})}
+                    set(v) {
+                      val old = ${it.name}
+                      ${cn}Impl.galaxy.setRelation(this, v, old, "${it.name}", ${it.nullable})}
                     """)
                 }
                 if (it.ro) {
@@ -195,8 +197,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             }
         }
 
-
-
+        val nullables = mths.values().filter { it.nullable }.map { "\"${it.name}\"" }.makeString(",");
         domainBuffer.append("boostrap${cn}(db)\n")
 
         body.append("""
@@ -211,7 +212,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         """)
 
         return """
-class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<${id!!.kind}>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject(id, store, ${cn}Impl.kind,node), ${cls.getName()}, ch.passenger.kinterest.LivingElement<${id!!.kind}> {
+class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject<${id!!.kind}>(id, store, ${cn}Impl.kind,node), ${cls.getName()}, ch.passenger.kinterest.LivingElement<${id!!.kind}> {
   override fun id() : ${id!!.kind} = id
   override protected [Transient] val subject = subject()
   override  fun galaxy(): ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> = ${cn}Impl.galaxy
@@ -222,8 +223,8 @@ class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDat
 
   class object {
     val kind : String = "${label}"
-    val galaxy : ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> get() = ch.passenger.kinterest.Universe.galaxy(javaClass<${cls.getName()}>())!!
-        fun get(${id!!.name}:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<${id!!.kind}>) : ${cls.getName()}? {
+    val galaxy : ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> get() = ch.passenger.kinterest.Universe.galaxy<${cls.getName()},${id!!.kind}>(kind)!!
+        fun get(${id!!.name}:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>) : ${cls.getName()}? {
         return store.tx {
            var res : ${cls.getName()}? = null
             val node = store.node(${id!!.name}, kind)
@@ -234,10 +235,10 @@ class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDat
   }
 }
 
-class ${cn}Galaxy(val neo4j:ch.passenger.kinterest.neo4j.Neo4jDatastore<${id!!.kind}>) : ch.passenger.kinterest.Galaxy<${cls.getName()},Long>(javaClass<${cls.getName()}>(), neo4j) {
+class ${cn}Galaxy(val neo4j:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>) : ch.passenger.kinterest.Galaxy<${cls.getName()},Long>(javaClass<${cls.getName()}>(), neo4j) {
     override fun generateId(): ${id!!.kind} = neo4j.nextSequence(kind) as ${id!!.kind}
     override fun retrieve(id: ${id!!.kind}): ${cls.getName()}? = $cimpl.get(id, neo4j)
-
+    override val nullables: Set<String> = setOf($nullables)
 }
 
 public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
@@ -251,7 +252,8 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 
     inner class Prop(val name: String, val ms: Array<CtMethod>) {
         val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
-                "java.util.List" to "jet.MutableList", "int" to "Int");
+                "java.util.List" to "jet.MutableList", "int" to "Int", "java.lang.Long" to "Long",
+                "java.lang.Integer" to "Int");
         val ro: Boolean get() = ms.size == 1
         fun defval(): String? {
             val dv = ms[0].getAnnotation(javaClass<DefaultValue>()) as DefaultValue?

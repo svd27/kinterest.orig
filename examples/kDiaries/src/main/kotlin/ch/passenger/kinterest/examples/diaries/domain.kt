@@ -32,6 +32,8 @@ trait DiaryDayEntry : LivingElement<Long> {
     var title : String [Label] get
     val created : Date [DefaultValue("java.util.Date()")] get
     var dated : Date [DefaultValue("java.util.Date()")] get
+    val diary : Diary [OneToOne(targetEntity=javaClass<Diary>())] get
+    var content : String [DefaultValue("\"type some text\"")] get
 }
 
 enum class OwnerState {
@@ -48,5 +50,6 @@ trait DiaryOwner : LivingElement<Long> {
     var state : OwnerState
     var height : Double
     val strength : Int
+    var editor : DiaryOwner? [OneToOne(targetEntity=javaClass<DiaryOwner>())] get
 }
 
