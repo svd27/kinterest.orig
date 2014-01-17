@@ -35,7 +35,7 @@ class DiaryJsonTests {
     fun jsonify() {
         val guser = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
 
-        val ff= FilterFactory<DiaryOwner,Long>(javaClass<DiaryOwner>(), guser.descriptor)
+        val ff= FilterFactory<DiaryOwner,Long>(guser, javaClass<DiaryOwner>(), guser.descriptor)
         val i1 = guser.interested("test")
         i1.filter = ff.gte("id", 0.toLong())
         val obs = object : Observer<ElementEvent<Long>> {

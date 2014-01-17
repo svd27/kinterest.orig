@@ -47,7 +47,7 @@ class FilterTests {
         assert(reds==3)
         assert(greens==3)
         assert(blues==5)
-        val ffac = FilterFactory(javaClass<FTestA>(), DomainObjectDescriptor(javaClass<FTestA>()))
+        val ffac = FilterFactory(FTestA(-1, FTColors.blue).galaxy(), javaClass<FTestA>(), DomainObjectDescriptor(javaClass<FTestA>()))
         val lb = l.filter<FTestA,Long>(ffac.eq("color", FTColors.blue))
         assert(lb.toList().size==blues)
         val lr = l.filter<FTestA,Long>(ffac.eq("color", FTColors.red))
@@ -75,7 +75,7 @@ class FilterTests {
         assert(reds==3)
         assert(greens==3)
         assert(blues==5)
-        val ffac = FilterFactory(javaClass<FTestA>(), DomainObjectDescriptor(javaClass<FTestA>()))
+        val ffac = FilterFactory(FTestA(-1, FTColors.blue).galaxy(), javaClass<FTestA>(), DomainObjectDescriptor(javaClass<FTestA>()))
         val llt = l.filter(ffac.lt("id", 5.toLong()))
         llt.forEach { log.info("${it.id} ${it.color}")
             assert(it.id<5) }

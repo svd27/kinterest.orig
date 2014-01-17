@@ -128,7 +128,7 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         val fu = JFrame("Users")
         fu.getContentPane()!!.setLayout(BorderLayout())
 
-        users.filter(iuser, FilterFactory(javaClass<DiaryOwner>(), users.galaxy.descriptor).gte("id", 0.toLong()).toJson())
+        users.filter(iuser, FilterFactory(Universe.galaxy<DiaryOwner,Long>("DiaryOwner") as Galaxy<DiaryOwner,Long>, javaClass<DiaryOwner>(), users.galaxy.descriptor).gte("id", 0.toLong()).toJson())
         val galaxy = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
         var ain :Interest<DiaryOwner,Long>? = null
         galaxy.withInterestDo {

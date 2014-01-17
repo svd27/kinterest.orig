@@ -4,6 +4,7 @@ import ch.passenger.kinterest.LivingElement
 import java.util.Date
 import ch.passenger.kinterest.annotations.DefaultValue
 import javax.persistence.OneToOne
+import javax.persistence.OneToMany
 import javax.persistence.Entity
 import javax.persistence.Id
 import org.neo4j.graphdb.GraphDatabaseService
@@ -22,7 +23,6 @@ trait Diary : LivingElement<Long> {
     val owner : DiaryOwner [OneToOne(targetEntity=javaClass<DiaryOwner>())] get
     val title : String [Label] get
     val created : Date [DefaultValue("java.util.Date()")] get
-
 }
 
 Entity(name="DiaryEntry")
@@ -51,5 +51,6 @@ trait DiaryOwner : LivingElement<Long> {
     var height : Double
     val strength : Int
     var editor : DiaryOwner? [OneToOne(targetEntity=javaClass<DiaryOwner>())] get
+    val buddies : List<DiaryOwner> [OneToMany(targetEntity=javaClass<DiaryOwner>())] get
 }
 

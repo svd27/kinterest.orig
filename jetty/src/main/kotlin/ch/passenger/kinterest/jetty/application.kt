@@ -175,12 +175,14 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
                 val pn = om.createObjectNode()!!
                 pn.put("property", p)
                 pn.put("relation", pd.relation)
-                if(pd.relation) {
+                pn.put("oneToMany", pd.oneToMany)
+                if(pd.relation || pd.oneToMany) {
                     val ann = pd.classOf.getAnnotation(javaClass<Entity>())
                     pn.put("entity", ann?.name())
                 } else {
                     pn.put("type", pd.getter.getReturnType()?.getName())
                 }
+
                 pn.put("nullable", dd.nullable(p))
                 pn.put("unique", pd.getter.unique())
                 pn.put("readonly", pd.setter==null)
@@ -213,6 +215,10 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
     val patEntityAdd = Pattern.compile("/([0-9]+)/add/([0-9]+)")
     val patEntityRemove = Pattern.compile("/([0-9]+)/remove/([0-9]+)")
     val patClear  = Pattern.compile("/([0-9]+)/clear")
+    val patRelAdd  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/add/([0-9]+)")
+    val patRelRem  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/remove/([0-9]+)")
+    val patRelInt  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/interest/([A-Za-z]+)")
+    val patRefresh  = Pattern.compile("/([0-9]+)/refresh")
 
 
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
@@ -265,15 +271,47 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             return
         }
 
+        val mrrem = patRelRem.matcher(path)
+        if(mrrem.matches()) {
+            val eid : Long = java.lang.Long.parseLong(mrrem.group(1)!!)
+            val prop = mrrem.group(2)!!
+            val target = java.lang.Long.parseLong(mrrem.group(3)!!)
+            service.remove(eid, prop, target)
+            ack(resp)
+            return
+        }
+
+        val mradd = patRelAdd.matcher(path)
+        if(mradd.matches()) {
+            val eid : Long = java.lang.Long.parseLong(mradd.group(1)!!)
+            val prop = mradd.group(2)!!
+            val target : Long = java.lang.Long.parseLong(mradd.group(3)!!)
+            service.add(eid, prop, target)
+            ack(resp)
+            return
+        }
+
+        val mrint = patRelInt.matcher(path)
+        if(mrint.matches()) {
+            val eid : Long = java.lang.Long.parseLong(mrint.group(1)!!)
+            val prop = mrint.group(2)!!
+            val name = mrint.group(3)!!
+            val id= service.relint(eid, prop, name)
+            val json = om.createObjectNode()!!
+            json.put("response", "ok")
+            json.put("interest", id)
+            resp.setContentType("application/json")
+            resp.getWriter()?.print(json.toString()!!)
+            resp.flushBuffer()
+            return
+        }
+
         if (mCrt.matches()) {
             val i = service.create(mCrt.group(1)!!)
             val json = om.createObjectNode()!!
             json.put("response", "ok")
             json.put("interest", i)
             resp.setContentType("application/json")
-            //resp.setContentLength(json.toString()!!.getBytes("UTF-8").size)
-            log.info("writing $json")
-            //resp.getWriter()?.write()
             resp.getWriter()?.print(json.toString()!!)
             resp.flushBuffer()
 

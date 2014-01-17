@@ -135,7 +135,7 @@ abstract class RelationFilter<T:LivingElement<U>,U:Comparable<U>>(val property:S
 
 //class FromFilter<T:LivingElement<U>,U:Hashable>(val ) : RelationFilter()
 
-class FilterFactory<T,U:Comparable<U>>(val target:Class<T>, val descriptor:DomainObjectDescriptor) where T : LivingElement<U> {
+class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<T>, val descriptor:DomainObjectDescriptor) where T : LivingElement<U> {
     fun<V:Comparable<V>> neq(property:String, value:V) : PropertyFilter<T,U,V> {
         val n : jet.Number
         return binrel<V>(property, value, FilterRelations.NEQ) {
@@ -251,7 +251,7 @@ class FilterFactory<T,U:Comparable<U>>(val target:Class<T>, val descriptor:Domai
                 val res = tg.filter(tf, array(), 0, 1).timeout(1000, TimeUnit.MILLISECONDS)!!.toBlockingObservable()!!.toFuture()!!.get()
                 //TODO: just return res != null
                 if(res!=null) {
-                    val oe = res.descriptor().get(res, sp) as LivingElement<Comparable<Any>>
+                    val oe = galaxy.getValue(res as U, sp) as LivingElement<Comparable<Any>>
                     return oe.id() == element.id()
                 }
                 return false
@@ -272,10 +272,10 @@ class FilterFactory<T,U:Comparable<U>>(val target:Class<T>, val descriptor:Domai
     fun to(property:String, filter:ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>) : RelationFilter<T,U> {
         return object : RelationFilter<T,U>(property, filter) {
             override fun accept(element: T): Boolean {
-                val fk = element.galaxy().descriptor.get(element, property) as LivingElement<*>
-                //val fe = Universe.get(f.kind, fk.id()) as LivingElement<*>
+                val fk = galaxy.getValue(element.id(), property) as LivingElement<Comparable<Any>>?
 
-                return filter.accept(fk as LivingElement<Comparable<Any>>)
+                if(fk==null) return false
+                return filter.accept(fk)
             }
 
             override val relation: FilterRelations = FilterRelations.TO

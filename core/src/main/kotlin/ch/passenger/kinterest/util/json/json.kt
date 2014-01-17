@@ -18,6 +18,8 @@ import ch.passenger.kinterest.InterestEvent
 import com.fasterxml.jackson.databind.JsonNode
 import ch.passenger.kinterest.OrderEvent
 import ch.passenger.kinterest.InterestConfigEvent
+import ch.passenger.kinterest.Galaxy
+import ch.passenger.kinterest.util.EntityList
 
 /**
  * Created by svd on 18/12/13.
@@ -33,14 +35,19 @@ public object Jsonifier {
         when(id) {
             is Number -> json.put("id", id.toLong())
         //really weird, seems String is not hashable
-        //is Object -> json.put("id", id.toString())
+            is Comparable<*> -> json.put("id", id.toString())
             else -> throw IllegalArgumentException("cant serialise id ${id} of type ${id.javaClass}")
         }
         val vnode = om.createObjectNode()!!
 
         props.forEach {
-            val pv = desc.get(value, it)
-            setValue(vnode, it, pv)
+            val g = value.galaxy() as Galaxy<LivingElement<Comparable<Any>>, Comparable<Any>>
+            val pv = g.getValue(value.id(), it)
+            if(desc.descriptors[it]!!.oneToMany) {
+                val el = pv as EntityList<*,*,*,*>
+                vnode.put(it, el.size)
+            }
+            else setValue(vnode, it, pv)
         }
         json.put("values", vnode)
         return json
@@ -66,7 +73,7 @@ public object Jsonifier {
                 on.put("interest", event.interest)
                 on.put("limit", event.limit)
                 on.put("offset", event.offset)
-                on.put("estimatedsize", event.esitmated)
+                on.put("estimatedsize", event.estimated)
                 on.put("currentsize", event.currentsize)
                 val an = om.createArrayNode()!!
                 event.orderBy.forEach { an.add(om.valueToTree<JsonNode>(it)) }
@@ -117,7 +124,13 @@ public object Jsonifier {
         val json = entityNode.get("values")!!
         json.fieldNames()!!.filter { it != "id" }.forEach {
             val pd = desc.descriptors[it]
-            if (pd != null && pd.relation) {
+            if(pd==null) throw IllegalArgumentException()
+            if(pd.oneToMany) {
+                //just ignore those
+            } else if(json[it]!!.isNull()) {
+                if(pd.nullable) m[it] = null
+                else throw IllegalArgumentException("cant set $it to null!!")
+            } else if (pd.relation) {
                 when(pd.linkType) {
                     javaClass<Long>() -> m[it] = json[it]!!.asLong()
                     javaClass<Int>() -> m[it] = json[it]!!.asInt()
@@ -126,7 +139,7 @@ public object Jsonifier {
                     else -> throw IllegalArgumentException("$it: ${pd.linkType} currently not supported")
                 }
             } else {
-                when(pd?.classOf) {
+                when(pd.classOf) {
                     javaClass<String>() -> m[it] = json[it]!!.textValue()
                     javaClass<Long>() -> m[it] = json[it]!!.longValue()
                     javaClass<Int>() -> m[it] = json[it]!!.intValue()
@@ -135,8 +148,8 @@ public object Jsonifier {
                     javaClass<Float>() -> m[it] = json[it]!!.floatValue()
                     javaClass<Boolean>() -> m[it] = json[it]!!.booleanValue()
                     javaClass<Date>() -> m[it] = jsonDate.parse(json[it]!!.textValue())
-                    else -> if (pd?.classOf?.isEnum()?:false) {
-                        m[it] = EnumDecoder.decode(pd?.classOf, json[it]!!.textValue())
+                    else -> if (pd.classOf?.isEnum()?:false) {
+                        m[it] = EnumDecoder.decode(pd.classOf, json[it]!!.textValue())
                     }
                 }
             }

@@ -71,6 +71,7 @@ import ch.passenger.kinterest.DomainPropertyDescriptor
 import ch.passenger.kinterest.RelationFilter
 import org.neo4j.cypher.internal.commands.Has
 import rx.observables.ConnectableObservable
+import ch.passenger.kinterest.Galaxy
 
 /**
  * Created by svd on 12/12/13.
@@ -154,9 +155,35 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                             subject.onNext(UpdateEvent(nkind, from?.getProperty("ID") as U, it.getType()?.name()!!, toid, null))
                     }
                 }
+                data.deletedRelationships()?.forEach {
+                    val from = it.getStartNode()!!
+                    if (from.hasProperty("ID") && from.hasProperty("KIND")) {
+                        val nkind = from?.getProperty("KIND")?.toString()
+                        val toid = it.getEndNode()?.getProperty("ID")
+                        if (nkind != null && toid!=null)
+                            subject.onNext(UpdateEvent(nkind, from?.getProperty("ID") as U, it.getType()?.name()!!, null, toid))
+                    }
+                }
 
             }
         })
+    }
+
+
+    override fun getValue(id: U, kind: String, p: String): Any? {
+        return tx {
+            val n = node(id, kind)
+            if(n==null || !n.hasProperty(p)) null
+            else n.getProperty(p)
+        }
+    }
+
+    override fun setValue(id: U, kind: String, p: String, v: Any?) {
+        tx {
+            val n = node(id, kind)
+            if(n==null || !n.hasProperty(p))
+            else if(v!=null) n.setProperty(p, v) else n.removeProperty(p)
+        }
     }
 
     private val filterFactory: Neo4jFilterFactory = Neo4jFilterFactory()
@@ -316,48 +343,29 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
 
     override fun <A : LivingElement<U>, B : LivingElement<V>, V : Comparable<V>> setRelation(from: A, to: B?, old: B?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
-        if (to == null) {
-            deleteRelation(from, relation, desc)
-            return
-        }
-        val pars : Map<String,Any> = mapOf("from" to from.id(), "to" to  to.id(), "optional" to optional)
-        val dpd = desc.descriptors[relation]!!
-        val tot = labelForClass(dpd.classOf as Class<LivingElement<*>>)
-        val fk : String = desc.entity
-
-        val q =
-                """
-        MATCH (n:${fk}), (m:${tot})
-        WHERE n.ID = {from} and m.ID = {to}
-        CREATE UNIQUE (n)-[r:$relation {OPTIONAL: {optional}}]->(m)
-        RETURN r
-        """
-        tx {
-            engine.execute(q, pars)
-        }
-        if(to.id()!=old?.id())
-        subject.onNext(UpdateEvent(desc.entity, from.id(), relation, to.id(), old?.id()))
+        setRelation(from.id(), to?.id(), old?.id(), relation, optional, desc)
     }
 
     override fun <V : Comparable<V>> setRelation(from: U, to: V?, old: V?, relation: String, optional: Boolean, desc: DomainObjectDescriptor) {
-        if (to == null) {
-            deleteRelation(from, relation, desc)
-            return
-        }
-        val dpd = desc.descriptors[relation]!!
-        val tot = labelForClass(dpd.classOf as Class<LivingElement<*>>)
-        val fk : String = desc.entity
-        val pars : Map<String,Any> = mapOf("from" to from, "to" to  to, "optional" to optional)
-        val q =
-                """
-        MATCH (n:${fk}), (m:${tot})
-        WHERE n.ID = {from} and m.ID = {to}
-        CREATE UNIQUE (n)-[r:$relation {OPTIONAL: {optional}}]->(m)
-        RETURN r
-        """
+        if(from==to) return
+
         tx {
-            log.info("executing\n$q\n$pars")
-            engine.execute(q, pars)
+            deleteRelation(from, relation, desc)
+            if (to!=null) {
+                val dpd = desc.descriptors[relation]!!
+                val tot = labelForClass(dpd.classOf as Class<LivingElement<*>>)
+                val fk : String = desc.entity
+                val pars : Map<String,Any> = mapOf<String,Any>("from" to from, "to" to  to, "optional" to optional)
+                val q =
+                        """
+            MATCH (n:${fk}), (m:${tot})
+            WHERE n.ID = {from} and m.ID = {to}
+            CREATE UNIQUE (n)-[r:$relation {OPTIONAL: {optional}}]->(m)
+            RETURN r
+            """
+                log.info("executing\n$q\n$pars")
+                engine.execute(q, pars)
+            }
         }
         if(to!=old)
         subject.onNext(UpdateEvent(desc.entity, from, relation, to, old))
@@ -403,49 +411,38 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
 
     override fun <A : LivingElement<U>> deleteRelation(from: A, relation: String, desc: DomainObjectDescriptor) {
-        val pars = mapOf("from" to from.id())
-        val q =
-                """
-        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}})-[r:$relation {OPTIONAL = false}]->(to))]
-        WHERE HAS(to.ID)
-        DELETE r
-        RETURN to.ID as ID
-        """
-        var del: Comparable<U>? = null
-        tx {
-            val res = engine.execute(q, pars)
-            del = res?.columnAs<Comparable<U>>("ID")?.iterator()?.take(1) as Comparable<U>?
-        }
-        if(del!=null)
-        subject.onNext(UpdateEvent(desc.entity, from.id(), relation, null, del))
-
+        deleteRelation(from.id(), relation, desc)
     }
 
     override fun deleteRelation(from: U, relation: String, desc: DomainObjectDescriptor) {
         val pars = mapOf("from" to from)
         val q =
                 """
-        MATCH (n:${desc.entity} { ID : {from}})-[r:$relation {OPTIONAL = false}]->(to))]
-        WHERE HAS(to.ID)
+        MATCH (n:${desc.entity})-[r:$relation]->(to)
+        WHERE n.ID = {from} AND HAS(to.ID)
         DELETE r
         RETURN to.ID as ID
         """
         var del: Comparable<Any>? = null
         tx {
             val res = engine.execute(q, pars)
-            del = res?.columnAs<Comparable<Any>>("ID")?.iterator()?.take(1) as Comparable<Any>?
+
+            val resourceIterator = res?.columnAs<Comparable<Any>>("ID")
+            if(resourceIterator!=null && resourceIterator.hasNext())
+              del = resourceIterator?.iterator()?.take(1)?.next() as Comparable<Any>?
         }
         if(del!=null)
-        subject.onNext(UpdateEvent(desc.entity, from, relation, null, del))
-
+          subject.onNext(UpdateEvent(desc.entity, from, relation, null, del))
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Comparable<V>> findRelations(from: A, to: Class<B>, relation: String, desc: DomainObjectDescriptor): Observable<V> {
-        val pars = mapOf("from" to from.id())
+
+    override fun <V:Comparable<V>> findRelations(from: U, relation: String, desc: DomainObjectDescriptor): Observable<V> {
+        val pars = mapOf("from" to from)
         val q =
                 """
-        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}})-[r:$relation]->(m:${labelForClass(to as Class<LivingElement<*>>)})
+        MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]?.targetEntity})
+        WHERE n.ID = {from}
         RETURN m.ID as ID
         """
         return tx {
@@ -460,9 +457,9 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         val pars :Map<String,Any> = mapOf("from" to from.id(), "to" to  to.id(), "optional" to true)
         val q =
                 """
-        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}}), (m:${labelFor(to as LivingElement<*>)} { ID : {to})
-        MERGE (n)-[r:$relation]->(m)
-        ON CREATE SET r.OPTIONAL= {optional}
+        MATCH (n:${from.descriptor().entity}), (m:${to.descriptor().entity})
+        WHERE n.ID = {from} AND m.ID = {to}
+        CREATE UNIQUE (n)-[r:${relation} {OPTIONAL: true}]->(m)
         RETURN r
         """
         tx {
@@ -471,11 +468,13 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
     }
 
 
-    override fun <A : LivingElement<U>, B : LivingElement<V>, V : Comparable<V>> removeRelation(from: A, to: B, relation: String, desc: DomainObjectDescriptor) {
-        val pars = mapOf("from" to from.id(), "to" to to.id())
+    override fun <V : Comparable<V>> removeRelation(from: U, to: V, relation: String, desc: DomainObjectDescriptor) {
+        val pars = mapOf("from" to from, "to" to to)
         val q =
                 """
-        MATCH (n:${labelFor(from as LivingElement<*>)} { ID : {from}})-[r:$relation {OPTIONAL=true}]->(m:${labelForClass(to as Class<LivingElement<*>>)}{ID:{to}})
+        MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]!!.targetEntity})
+        WHERE n.ID = {from} and m.ID = {to} and r.OPTIONAL = true
+        DELETE r
         RETURN m.ID as ID
         """
         tx {
@@ -515,9 +514,8 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                     db.db.schema()!!.constraintFor(label)!!.on(it)!!.unique()!!.create()
             }
         }
-
     }
-}
+ }
 
 class Neo4jQuery(val q: String, val params: Map<String, Any>)
 
@@ -636,16 +634,17 @@ public fun Node.dump(): String {
 }
 
 
-abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDatastore<Event<T>,T>, protected val kind: String, private val node: Node) : DomainObject {
+abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDatastore<Event<T>,T>, protected val kind: String, private val node: Node, val descriptor:DomainObjectDescriptor) : DomainObject {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject<T>>())!!
-    protected fun<T> prop(name:String, pd:DomainPropertyDescriptor): T? = store.tx {
+    protected fun<U> prop(name:String, pd:DomainPropertyDescriptor): U? = store.tx {
         val n = if (name == "id") "ID" else name
         if(node().hasProperty(n)) {
-            pd.fromDataStore(node().getProperty(n)) as T?
+            pd.fromDataStore(node().getProperty(n)) as U?
         }
         else null
     }
-    protected fun<T> prop(name: String, pd:DomainPropertyDescriptor, value: T?): Unit = store.tx {
+
+    protected fun<U> prop(name: String, pd:DomainPropertyDescriptor, value: U?): Unit = store.tx {
         node().setProperty((if (name == "id") "ID" else name), pd.toDataStore(value))
     }
 

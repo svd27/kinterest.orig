@@ -21,6 +21,8 @@ import java.util.concurrent.ExecutorService
 import com.fasterxml.jackson.databind.node.ArrayNode
 import ch.passenger.kinterest.SortKey
 import ch.passenger.kinterest.SortDirection
+import ch.passenger.kinterest.util.EntityList
+import ch.passenger.kinterest.Universe
 
 /**
  * Created by svd on 18/12/13.
@@ -47,12 +49,12 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     fun current() = current.set(this)
     fun detach() = current.set(null)
     val id = KISession.nid()
-    val interests : MutableSet<Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>> = HashSet()
+    val interests : MutableMap<Int,Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>> = HashMap()
     val subjects : MutableMap<Int,Subscription> = HashMap()
     var events : EventPublisher? = null
     set(v) {
         if($events==null && v!=null) {
-            interests.forEach {
+            interests.values().forEach {
                 val subscription = it.observable.subscribe{if(it is Event<*>) events?.publish(listOf(it as Event<Comparable<Any>>))}!!
                 subjects[it.id] = subscription
             }
@@ -65,7 +67,7 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     var entities : EntityPublisher? = null
 
     fun addInterest(i:Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>) {
-        interests.add(i)
+        interests[id] = i
         if(events!=null) {
             subjects[i.id] = i.observable.subscribe{events?.publish(listOf(it!! as Event<Comparable<Any>>))}!!
         }
@@ -78,12 +80,12 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     fun dispose() {
         events = null
         entities = null
-        interests.forEach { it.close() }
+        interests.values().forEach { it.close() }
     }
 
     fun allInterests(cb:(Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>)->Unit) {
         log.info("iterating ${interests.size()} interests")
-        interests.forEach { cb(it as Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>) }
+        interests.values().forEach { cb(it as Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>) }
     }
 
 
@@ -176,10 +178,8 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         bulkUpdate(Jsonifier.idOf(json) as U, Jsonifier.valueMap(json, galaxy.descriptor))
     }
     public fun bulkUpdate(id: U, values: Map<String, Any?>) {
-        val el = galaxy.get(id)!!
-        val dd = galaxy.descriptor
         values.entrySet().forEach {
-            dd.set(el, it.key, it.value)
+            galaxy.setValue(id, it.key, it.value)
         }
     }
 
@@ -194,15 +194,53 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
     }
 
     public fun add(id:Int, eid:Comparable<Any>) {
-        KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.add(eid as U) }
+        KISession.current()!!.interests.values().filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.add(eid as U) }
     }
 
     public fun remove(id:Int, eid:Comparable<Any>) {
-        KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.remove(eid as U) }
+        KISession.current()!!.interests.values().filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.remove(eid as U) }
     }
 
+    public fun add(eid:Comparable<*>, property:String, target:Comparable<*>) {
+        val entity = galaxy.get(eid as U) as LivingElement<U>?
+        if(entity is ch.passenger.kinterest.LivingElement<U>) {
+            val el = galaxy.getValue(entity.id(), property) as EntityList<T,U,LivingElement<Comparable<Any>>,Comparable<Any>>
+            val te = Universe.galaxy<LivingElement<Comparable<Any>>,Comparable<Any>>(galaxy.descriptor.descriptors[property]!!.targetEntity)!!
+            el.add(te.get(target as Comparable<Any>) as LivingElement<Comparable<Any>>)
+        }
+    }
+
+    public fun remove(eid:Comparable<*>, property:String, target:Comparable<*>) {
+        val entity = galaxy.get(eid as U) as LivingElement<U>?
+        if(entity is ch.passenger.kinterest.LivingElement<U>) {
+            val el = galaxy.getValue(entity.id(), property) as EntityList<T,U,LivingElement<Comparable<Any>>,Comparable<Any>>
+            val te = Universe.galaxy<LivingElement<Comparable<Any>>,Comparable<Any>>(galaxy.descriptor.descriptors[property]!!.targetEntity)!!
+            el.remove(te.get(target as Comparable<Any>) as LivingElement<Comparable<Any>>)
+        }
+    }
+
+    public fun relint(eid:Comparable<*>, property:String, name:String) : Int {
+        val entity = galaxy.get(eid as U) as LivingElement<U>?
+        if(entity is ch.passenger.kinterest.LivingElement<U>) {
+            val el = galaxy.getValue(entity.id(), property) as EntityList<T,U,LivingElement<Comparable<Any>>,Comparable<Any>>
+
+            val interest = el.asInterest(name)
+            KISession.current()?.addInterest(interest as Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>)
+            return interest.id
+        }
+        throw IllegalStateException()
+    }
+
+    public fun refresh(id:Int) {
+        val interest = KISession.current()?.interests?.get(id)
+        if(interest != null) {
+            interest.refresh()
+        }
+    }
+
+
     public fun clear(id:Int) {
-        KISession.current()!!.interests.filter { it.id == id }.forEach { val ai = it as Interest<T,U>; ai.filter= galaxy.filterFactory.staticFilter(ai) }
+        KISession.current()!!.interests.values().filter { it.id == id }.forEach { val ai = it as Interest<T,U>; ai.filter= galaxy.filterFactory.staticFilter(ai) }
     }
 }
 

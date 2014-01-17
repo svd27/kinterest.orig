@@ -23,6 +23,9 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
     private val log = LoggerFactory.getLogger(javaClass<Neo4jGenerator>())!!
     private val pool: ClassPool = ClassPool.getDefault()!!;
     private val uniqueConstraints = StringBuilder()
+    val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
+            "java.util.List" to "jet.MutableList", "int" to "Int", "java.lang.Long" to "Long",
+            "java.lang.Integer" to "Int");
     val domainBuffer = StringBuilder();
 
     {
@@ -182,16 +185,17 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                 var ret : Class<*>? = null
                 target.getMethods().forEach {
                     if(it.getAnnotation(javaClass<Id>())!=null) {
-                        ret = it.getReturnType()
+                        if(ret==null)
+                        ret = it.getReturnType() as Class<*>
+
                     }
                 }
                 var rtype =ret?.getName()
-                val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
-                        "java.util.List" to "jet.MutableList");
+
+
                 if(trans.containsKey(rtype)) rtype = trans[rtype]
                 body.append("""
-                  override val ${it.name} : ${it.kind}<${target.getName()},${rtype}> =
-                  ch.passenger.kinterest.Interest<${target.getName()},${rtype}>("", javaClass<${target.getName()}>())
+                override val ${it.name}: List<${target.getName()}> = ch.passenger.kinterest.util.EntityList<${cls.getName()},${id!!.kind},${target.getName()},${rtype}>("${it.name}", this, store, galaxy)
                 """)
 
             }
@@ -212,7 +216,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         """)
 
         return """
-class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject<${id!!.kind}>(id, store, ${cn}Impl.kind,node), ${cls.getName()}, ch.passenger.kinterest.LivingElement<${id!!.kind}> {
+class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject<${id!!.kind}>(id, store, ${cn}Impl.kind,node, ${cn}Impl.galaxy.descriptor), ${cls.getName()}, ch.passenger.kinterest.LivingElement<${id!!.kind}> {
   override fun id() : ${id!!.kind} = id
   override protected [Transient] val subject = subject()
   override  fun galaxy(): ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> = ${cn}Impl.galaxy
@@ -251,9 +255,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 
 
     inner class Prop(val name: String, val ms: Array<CtMethod>) {
-        val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
-                "java.util.List" to "jet.MutableList", "int" to "Int", "java.lang.Long" to "Long",
-                "java.lang.Integer" to "Int");
+
         val ro: Boolean get() = ms.size == 1
         fun defval(): String? {
             val dv = ms[0].getAnnotation(javaClass<DefaultValue>()) as DefaultValue?
