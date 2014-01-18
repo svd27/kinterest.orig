@@ -45,7 +45,7 @@ public object Jsonifier {
             val pv = g.getValue(value.id(), it)
             if(desc.descriptors[it]!!.oneToMany) {
                 val el = pv as EntityList<*,*,*,*>
-                vnode.put(it, el.size)
+                vnode.put(it, el.size())
             }
             else setValue(vnode, it, pv)
         }

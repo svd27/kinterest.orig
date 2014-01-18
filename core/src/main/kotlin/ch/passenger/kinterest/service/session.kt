@@ -23,6 +23,7 @@ import ch.passenger.kinterest.SortKey
 import ch.passenger.kinterest.SortDirection
 import ch.passenger.kinterest.util.EntityList
 import ch.passenger.kinterest.Universe
+import rx.Observer
 
 /**
  * Created by svd on 18/12/13.
@@ -68,9 +69,22 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
 
     fun addInterest(i:Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>) {
         interests[id] = i
-        if(events!=null) {
-            subjects[i.id] = i.observable.subscribe{events?.publish(listOf(it!! as Event<Comparable<Any>>))}!!
-        }
+            subjects[i.id] = i.observable.subscribe(object :Observer<Event<Comparable<Any?>>> {
+
+                override fun onCompleted() {
+                    subjects[id]?.unsubscribe()
+                    interests[id]?.close()
+                    interests.remove(id)
+                    log.warn("interest $id done")
+                }
+                override fun onError(e: Throwable?) {
+                    log.error(e?.getMessage(), e)
+                    e?.printStackTrace()
+                }
+                override fun onNext(args: Event<Comparable<Any?>>?) {
+                    events?.publish(listOf(args!! as Event<Comparable<Any>>))
+                }
+            })!!
     }
     fun removeInterest(i:Interest<*,*>) {
         interests.remove(i)
@@ -134,8 +148,8 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
     public fun delete(id: Int): Unit = galaxy.uninterested(id)
     public fun filter(id: Int, filter: ObjectNode): Unit {
         log.info("$filter")
-        galaxy.withInterestDo {
-            val interest = it[id]
+        galaxy.withInterestDo(id) {
+            val interest = it
 
             if (interest != null) {
                 if (filter["relation"]!!.textValue()!! == FilterRelations.STATIC.name()) {
@@ -149,23 +163,15 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
 
     }
     public fun orderBy(id:Int, order:ArrayNode) {
-        galaxy.withInterestDo {
-            val i = it[id]
-            if(i is Interest) {
-                log.info("$order")
-                i.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.copyToArray()
-            } else {
-                log.warn("cant order dead interest $id")
-            }
+        galaxy.withInterestDo(id) {
+            log.info("$order")
+            it.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.copyToArray()
         }
 
     }
     public fun buffer(id: Int, offset:Int, limit: Int) {
-        galaxy.withInterestDo {
-            val interest = it[id]
-            if (interest != null) {
-                interest.buffer(offset, limit)
-            }
+        galaxy.withInterestDo(id) {
+            it.buffer(offset, limit)
         }
     }
 
@@ -219,17 +225,6 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         }
     }
 
-    public fun relint(eid:Comparable<*>, property:String, name:String) : Int {
-        val entity = galaxy.get(eid as U) as LivingElement<U>?
-        if(entity is ch.passenger.kinterest.LivingElement<U>) {
-            val el = galaxy.getValue(entity.id(), property) as EntityList<T,U,LivingElement<Comparable<Any>>,Comparable<Any>>
-
-            val interest = el.asInterest(name)
-            KISession.current()?.addInterest(interest as Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>)
-            return interest.id
-        }
-        throw IllegalStateException()
-    }
 
     public fun refresh(id:Int) {
         val interest = KISession.current()?.interests?.get(id)

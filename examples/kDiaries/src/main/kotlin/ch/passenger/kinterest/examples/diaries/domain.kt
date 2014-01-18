@@ -12,6 +12,7 @@ import ch.passenger.kinterest.Universe
 import javax.persistence.UniqueConstraint
 import ch.passenger.kinterest.annotations.Index
 import ch.passenger.kinterest.annotations.Label
+import ch.passenger.kinterest.util.EntityList
 
 /**
  * Created by svd on 16/12/13.
@@ -51,6 +52,6 @@ trait DiaryOwner : LivingElement<Long> {
     var height : Double
     val strength : Int
     var editor : DiaryOwner? [OneToOne(targetEntity=javaClass<DiaryOwner>())] get
-    val buddies : List<DiaryOwner> [OneToMany(targetEntity=javaClass<DiaryOwner>())] get
+    val buddies : EntityList<DiaryOwner,Long,DiaryOwner,Long> [OneToMany(targetEntity=javaClass<DiaryOwner>())] get
 }
 

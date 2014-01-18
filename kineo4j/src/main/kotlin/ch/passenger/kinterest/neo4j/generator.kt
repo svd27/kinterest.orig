@@ -195,7 +195,8 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
 
                 if(trans.containsKey(rtype)) rtype = trans[rtype]
                 body.append("""
-                override val ${it.name}: List<${target.getName()}> = ch.passenger.kinterest.util.EntityList<${cls.getName()},${id!!.kind},${target.getName()},${rtype}>("${it.name}", this, store, galaxy)
+                override val ${it.name}: ch.passenger.kinterest.util.EntityList<${cls.getName()},${id!!.kind},${target.getName()},${rtype}>
+                  = ch.passenger.kinterest.util.EntityList<${cls.getName()},${id!!.kind},${target.getName()},${rtype}>("${it.name}", this, store, galaxy)
                 """)
 
             }

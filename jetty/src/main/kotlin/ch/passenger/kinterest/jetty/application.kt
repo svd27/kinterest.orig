@@ -217,7 +217,6 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
     val patClear  = Pattern.compile("/([0-9]+)/clear")
     val patRelAdd  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/add/([0-9]+)")
     val patRelRem  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/remove/([0-9]+)")
-    val patRelInt  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/interest/([A-Za-z]+)")
     val patRefresh  = Pattern.compile("/([0-9]+)/refresh")
 
 
@@ -288,21 +287,6 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             val target : Long = java.lang.Long.parseLong(mradd.group(3)!!)
             service.add(eid, prop, target)
             ack(resp)
-            return
-        }
-
-        val mrint = patRelInt.matcher(path)
-        if(mrint.matches()) {
-            val eid : Long = java.lang.Long.parseLong(mrint.group(1)!!)
-            val prop = mrint.group(2)!!
-            val name = mrint.group(3)!!
-            val id= service.relint(eid, prop, name)
-            val json = om.createObjectNode()!!
-            json.put("response", "ok")
-            json.put("interest", id)
-            resp.setContentType("application/json")
-            resp.getWriter()?.print(json.toString()!!)
-            resp.flushBuffer()
             return
         }
 
@@ -432,11 +416,21 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
         currentApp.set(app)
         s.current()
         log.info("service ${req.getPathInfo()}")
-        super.service(req, resp)
+        try {
+            super.service(req, resp)
+        } catch(e: Throwable) {
+            log.error("problem on $req", e)
+            ack(e, resp)
+        }
     }
 
     protected fun ack(resp:HttpServletResponse) {
         resp.getWriter()?.write("{response: 'ok'}")
+        resp.flushBuffer()
+    }
+
+    protected fun ack(e:Throwable, resp:HttpServletResponse) {
+        resp.getWriter()?.write("{response: 'error', message: '${e.getMessage()}'}")
         resp.flushBuffer()
     }
 

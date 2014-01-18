@@ -99,6 +99,7 @@ Logger.getLogger("").getHandlers().forEach {
     }.start()
 
 
+    /*
     session.current()
 
     val diaries = Universe.galaxy<Diary,Long>(javaClass<Diary>().entityName())!!
@@ -118,6 +119,7 @@ Logger.getLogger("").getHandlers().forEach {
     session.current()
     val uf = UserFrame(service)
     uf.show()
+    */
 }
 
 class UserFrame(val users:InterestService<DiaryOwner,Long>) {
@@ -131,8 +133,8 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         users.filter(iuser, FilterFactory(Universe.galaxy<DiaryOwner,Long>("DiaryOwner") as Galaxy<DiaryOwner,Long>, javaClass<DiaryOwner>(), users.galaxy.descriptor).gte("id", 0.toLong()).toJson())
         val galaxy = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
         var ain :Interest<DiaryOwner,Long>? = null
-        galaxy.withInterestDo {
-            ain = it[iuser]
+        galaxy.withInterestDo(iuser) {
+            ain = it
         }
         val tbl = JTable(InterestTableModel(ain!!, users))
         tbl.getTableHeader()?.addMouseListener(object : MouseAdapter() {

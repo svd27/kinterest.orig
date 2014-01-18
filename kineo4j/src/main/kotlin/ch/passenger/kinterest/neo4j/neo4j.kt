@@ -69,7 +69,6 @@ import java.text.SimpleDateFormat
 import ch.passenger.kinterest.Universe
 import ch.passenger.kinterest.DomainPropertyDescriptor
 import ch.passenger.kinterest.RelationFilter
-import org.neo4j.cypher.internal.commands.Has
 import rx.observables.ConnectableObservable
 import ch.passenger.kinterest.Galaxy
 
@@ -146,6 +145,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                                     it.key()!!, null, it.previouslyCommitedValue()))
                     }
                 }
+                /*
                 data.createdRelationships()?.forEach {
                     val from = it.getStartNode()!!
                     if (from.hasProperty("ID") && from.hasProperty("KIND")) {
@@ -164,6 +164,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                             subject.onNext(UpdateEvent(nkind, from?.getProperty("ID") as U, it.getType()?.name()!!, null, toid))
                     }
                 }
+                */
 
             }
         })
@@ -215,6 +216,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                     log.error("filter interupted", e)
                 } catch(e: Throwable) {
                     log.error("ooops", e)
+                    log.error("q: ${q.q} ${q.params}")
                     obs?.onError(e)
                 }finally {
                     obs?.onCompleted()
@@ -444,11 +446,45 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]?.targetEntity})
         WHERE n.ID = {from}
         RETURN m.ID as ID
+        ORDER BY m.ID
         """
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<V>("ID")!!
             Observable.from(resourceIterator.toList())!!
+        }
+    }
+
+
+    override fun <V : Comparable<V>> findNthRelations(from: U, relation: String, nth: Int, desc: DomainObjectDescriptor): Observable<V> {
+        val pars : Map<String,Any> = mapOf("from" to from, "nth" to nth)
+        val q =
+                """
+        MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]?.targetEntity})
+        WHERE n.ID = {from}
+        RETURN m.ID as ID
+        ORDER BY m.ID
+        SKIP {nth} LIMIT 1
+        """
+        return tx {
+            val executionResult = engine.execute(q, pars)
+            val resourceIterator = executionResult?.columnAs<V>("ID")!!
+            Observable.from(resourceIterator.toList())!!
+        }
+    }
+
+    override fun <V:Comparable<V>> countRelations(from: U, relation: String, desc: DomainObjectDescriptor): Observable<Int> {
+        val pars = mapOf("from" to from)
+        val q =
+                """
+        MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]?.targetEntity})
+        WHERE n.ID = {from}
+        RETURN COUNT(m.ID) as N
+        """
+        return tx {
+            val executionResult = engine.execute(q, pars)
+            val resourceIterator = executionResult?.columnAs<Long>("N")!!
+            Observable.from(resourceIterator.toList())!!.map {it?.toInt()}!!
         }
     }
 
@@ -463,8 +499,10 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         RETURN r
         """
         tx {
+            log.info("ADD RELATION ${q}: $pars")
             engine.execute(q, pars)
         }
+        subject.onNext(UpdateEvent(desc.entity, from.id(), relation, to.id(), null))
     }
 
 
@@ -478,8 +516,10 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         RETURN m.ID as ID
         """
         tx {
+            log.info("REMOVE RELATION ${q}: $pars")
             engine.execute(q, pars)
         }
+        subject.onNext(UpdateEvent(desc.entity, from, relation, null, to))
     }
 
 
@@ -507,11 +547,11 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                 }
             }
         }
+        val label = DynamicLabel.label(desc.entity)
         desc.uniques.forEach {
-            val label = DynamicLabel.label(desc.entity)
             tx {
                 if (!(db.db.schema()!!.getConstraints(label)?.iterator()?.hasNext()?:false))
-                    db.db.schema()!!.constraintFor(label)!!.on(it)!!.unique()!!.create()
+                    db.db.schema()!!.constraintFor(label)!!.assertPropertyIsUnique(it)
             }
         }
     }

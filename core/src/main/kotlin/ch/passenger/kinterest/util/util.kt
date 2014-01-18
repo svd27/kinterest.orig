@@ -22,3 +22,8 @@ fun<T> Array<T>.firstThat(predicate:(T)->Boolean) : T? {
     for(t in this) if(predicate(t)) return t
     return null
 }
+
+fun<T> Iterable<T>.firstThat(predicate:(T)->Boolean) : T? {
+    for(t in this) if(predicate(t)) return t
+    return null
+}
