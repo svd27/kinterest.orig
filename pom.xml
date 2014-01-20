@@ -24,6 +24,7 @@
         <module>jetty</module>
         <module>kineo4j</module>
         <module>examples</module>
+        <module>kInStyle</module>
     </modules>
 
     <build>

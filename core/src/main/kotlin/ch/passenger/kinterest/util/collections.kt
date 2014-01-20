@@ -20,7 +20,7 @@ import ch.passenger.kinterest.Universe
  */
 
 
-class EntityList<T:LivingElement<U>,U:Comparable<U>,V:LivingElement<W>,W:Comparable<W>>(val name:String, private val owner:T, private val store:DataStore<Event<U>,U>, private val galaxy:Galaxy<V,W>)  {
+class EntityList<T:LivingElement<U>,U:Comparable<U>,V:LivingElement<W>,W:Comparable<W>>(val name:String, private val owner:T, private val store:DataStore<Event<U>,U>, private val galaxy:Galaxy<V,W>) : Iterable<V> {
     private val pd : DomainPropertyDescriptor = owner.descriptor().descriptors[name]!!
 
     private fun removeRelation(to:W) {
@@ -42,5 +42,19 @@ class EntityList<T:LivingElement<U>,U:Comparable<U>,V:LivingElement<W>,W:Compara
 
     public fun get(idx:Int) : V? {
         return store.findNthRelations<V>(owner.id(), name, idx, owner.descriptor())!!.toBlockingObservable()!!.singleOrDefault(null)!!
+    }
+
+
+    override fun iterator(): Iterator<V> {
+        var core = ArrayList<V>()
+
+        store.atomic {
+            val l : Collection<W> = store.findRelations<W>(owner.id(), name, owner.descriptor()).toList()!!.toBlockingObservable()!!.single()!!
+            l.forEach {
+                core.add(galaxy.get(it)!!)
+            }
+
+        }
+        return core.iterator()
     }
 }

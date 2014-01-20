@@ -218,6 +218,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
     val patRelAdd  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/add/([0-9]+)")
     val patRelRem  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/remove/([0-9]+)")
     val patRefresh  = Pattern.compile("/([0-9]+)/refresh")
+    val patAction = Pattern.compile("/entity/([0-9]+)/action/([A-Za-z]+)")
 
 
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
@@ -369,8 +370,9 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
 
         val mce = patCreateEntity.matcher(path)
         if(mce.matches()) {
-            service.createElement(Jsonifier.valueMap(om.readTree(read(req.getInputStream()!!)) as ObjectNode, service.galaxy.descriptor))
-            ack(resp)
+            val id = service.createElement(Jsonifier.valueMap(om.readTree(read(req.getInputStream()!!)) as ObjectNode, service.galaxy.descriptor))
+
+            ack(resp, mapOf<String,Any>("id" to id))
             return
         }
 
@@ -380,6 +382,20 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             val id = Integer.parseInt(sint)
             service.orderBy(id, om.readTree(read(req.getInputStream()!!)) as ArrayNode)
             ack(resp)
+            return
+        }
+
+        val mact = patAction.matcher(path)
+        if(mact.matches()) {
+            val eid = java.lang.Long.parseLong(mact.group(1)!!)
+            val action = mact.group(2)!!
+            val pars = om.readTree(read(req.getInputStream()!!)) as ArrayNode
+            val res = service.call<Long>(eid, action, pars)
+            val fields = HashMap<String,Any>()
+            if(res!=null) {
+                fields["result"] =  res as Any
+            }
+            ack(resp, fields)
             return
         }
 
@@ -424,8 +440,13 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
         }
     }
 
-    protected fun ack(resp:HttpServletResponse) {
-        resp.getWriter()?.write("{response: 'ok'}")
+    protected fun ack(resp:HttpServletResponse, fields:Map<String,Any> = mapOf()) {
+        val js = om.createObjectNode()!!
+        js.put("response", "ok")
+        fields.entrySet().forEach {
+            js.put(it.getKey(), om.valueToTree<JsonNode>(it.getValue()))
+        }
+        resp.getWriter()?.write(om.writeValueAsString(js)!!)
         resp.flushBuffer()
     }
 
@@ -476,7 +497,7 @@ class DumperServlet(app:KIApplication) : KIServlet(app) {
 }
 
 class StaticServlet(val root:File) : HttpServlet() {
-    protected open val log: Logger = LoggerFactory.getLogger(this.javaClass)!!
+    protected val log: Logger = LoggerFactory.getLogger(this.javaClass)!!
     override fun service(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
         if (resp == null) throw IllegalStateException()

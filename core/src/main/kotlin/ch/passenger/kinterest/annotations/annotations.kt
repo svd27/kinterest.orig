@@ -12,3 +12,4 @@ import java.lang.annotation.RetentionPolicy
 annotation [Retention(RetentionPolicy.RUNTIME)] [Target(ElementType.METHOD)] class  DefaultValue(val value : String)
 annotation [Retention(RetentionPolicy.RUNTIME)] [Target(ElementType.METHOD)] class  Label()
 annotation [Retention(RetentionPolicy.RUNTIME)] [Target(ElementType.METHOD)] class  Index
+annotation [Retention(RetentionPolicy.RUNTIME)] [Target(ElementType.METHOD)] class  Expose

@@ -15,6 +15,7 @@ import javassist.CtMethod
 import ch.passenger.kinterest.annotations.DefaultValue
 import org.jetbrains.annotations.Nullable
 import java.lang.reflect.Modifier
+import ch.passenger.kinterest.annotations.Expose
 
 /**
  * Created by svd on 17/12/13.
@@ -196,7 +197,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                 if(trans.containsKey(rtype)) rtype = trans[rtype]
                 body.append("""
                 override val ${it.name}: ch.passenger.kinterest.util.EntityList<${cls.getName()},${id!!.kind},${target.getName()},${rtype}>
-                  = ch.passenger.kinterest.util.EntityList<${cls.getName()},${id!!.kind},${target.getName()},${rtype}>("${it.name}", this, store, galaxy)
+                  = ch.passenger.kinterest.util.EntityList<${cls.getName()},${id!!.kind},${target.getName()},${rtype}>("${it.name}", this, store, ${target.getName()}Impl.galaxy)
                 """)
 
             }
@@ -295,7 +296,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
         cls.getMethods()?.forEach {
             if (!Modifier.isStatic(it.getModifiers()) && !Modifier.isPrivate(it.getModifiers())) {
                 if (it.getName()!!.startsWith("get")) {
-                    if (it.getAnnotation(javaClass<Transient>()) == null) {
+                    if (it.getAnnotation(javaClass<Transient>()) == null && it.getAnnotation(javaClass<Expose>()) == null) {
                         val capName = it.getName()!!.substring(3)
                         val pn = capName.decapitalize()
                         if (pn != "class") {
@@ -309,6 +310,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
                         }
                     }
                 } else if(it.getAnnotation(javaClass<Id>())!=null) {
+                    if(!props.containsKey(it.getName()))
                     props[it.getName()!!] = Prop(it.getName()!!, array(it))
                 }
             }

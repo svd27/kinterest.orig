@@ -62,7 +62,13 @@ public object Jsonifier {
             is OrderEvent<U> -> {
                 val an = om.createArrayNode()!!
                 on.put("interest", event.interest)
-                event.order.forEach { an.add(om.valueToTree<JsonNode>(it)) }
+                if(event.order==null)
+                    throw IllegalStateException("BOOOM")
+                event.order.forEach {
+                    if(it==null)
+                        throw IllegalStateException("BOOOM")
+                    an.add(om.valueToTree<JsonNode>(it))
+                }
                 on.put("order", an)
             }
             is InterestEvent<U> -> {

@@ -24,6 +24,8 @@ import ch.passenger.kinterest.SortDirection
 import ch.passenger.kinterest.util.EntityList
 import ch.passenger.kinterest.Universe
 import rx.Observer
+import ch.passenger.kinterest.exposeds
+import com.fasterxml.jackson.databind.ObjectMapper
 
 /**
  * Created by svd on 18/12/13.
@@ -175,8 +177,8 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         }
     }
 
-    public fun createElement(values: Map<String, Any?>): Unit {
-        galaxy.create(values)
+    public fun createElement(values: Map<String, Any?>): U {
+        return galaxy.create(values)
     }
 
     public fun save(json: ObjectNode) {
@@ -236,6 +238,21 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
 
     public fun clear(id:Int) {
         KISession.current()!!.interests.values().filter { it.id == id }.forEach { val ai = it as Interest<T,U>; ai.filter= galaxy.filterFactory.staticFilter(ai) }
+    }
+
+    public fun call<W:Comparable<W>>(id:W, action:String, pars:ArrayNode) : Any? {
+        val eid = id as U
+        val om = ObjectMapper()
+        val a = galaxy.sourceType.exposeds().filter {
+            it.name==action
+        }.first!!
+        val mpars = a.method.getParameterTypes()!!
+        val args = Array<Any?>(mpars.size) {null}
+        mpars.withIndices().forEach {
+             args[it.first] = om.treeToValue<Object?>(pars[it.first], it.second as Class<Object?>)
+        }
+        log.info("invoking ${a.name}:${a.method.getReturnType()} with ${args}")
+        return a.method.invoke(galaxy.get(eid), *args)
     }
 }
 
