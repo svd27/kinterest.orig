@@ -69,7 +69,6 @@ import java.text.SimpleDateFormat
 import ch.passenger.kinterest.Universe
 import ch.passenger.kinterest.DomainPropertyDescriptor
 import ch.passenger.kinterest.RelationFilter
-import org.neo4j.cypher.internal.commands.Has
 import rx.observables.ConnectableObservable
 import ch.passenger.kinterest.Galaxy
 
@@ -102,7 +101,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
     private val engine = db.engine;
 
     {
-        db.db.registerTransactionEventHandler(object : TransactionEventHandler.Adapter<Node>() {
+        val thandler = object : TransactionEventHandler.Adapter<Node>() {
             override fun afterCommit(data: TransactionData?, state: Node?) {
                 if (data == null) return
                 data.createdNodes()?.forEach {
@@ -128,12 +127,12 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                         if (nkind != null) {
                             val d = Universe.descriptor(nkind)
                             val pd = d?.descriptors?.get(it.key())
-                            if(d is DomainObjectDescriptor && pd is DomainPropertyDescriptor) {
+                            if (d is DomainObjectDescriptor && pd is DomainPropertyDescriptor) {
                                 val value = pd.fromDataStore(it.value())
                                 log.info("${it.previouslyCommitedValue()} -> $value")
-                                if(value!=it.previouslyCommitedValue())
-                                subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
-                                        it.key()!!, value, it.previouslyCommitedValue()))
+                                if (value != it.previouslyCommitedValue())
+                                    subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
+                                            it.key()!!, value, it.previouslyCommitedValue()))
                             }
                         }
                     }
@@ -141,11 +140,12 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                 data.removedNodeProperties()?.forEach {
                     if (it?.entity()?.hasProperty("ID")?:false && it?.entity()?.hasProperty("KIND")?:false) {
                         val nkind = it.entity()?.getProperty("KIND")?.toString()
-                        if (nkind != null && it.previouslyCommitedValue()!=null)
+                        if (nkind != null && it.previouslyCommitedValue() != null)
                             subject.onNext(UpdateEvent(nkind, it.entity()?.getProperty("ID") as U,
                                     it.key()!!, null, it.previouslyCommitedValue()))
                     }
                 }
+                /*
                 data.createdRelationships()?.forEach {
                     val from = it.getStartNode()!!
                     if (from.hasProperty("ID") && from.hasProperty("KIND")) {
@@ -164,9 +164,11 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                             subject.onNext(UpdateEvent(nkind, from?.getProperty("ID") as U, it.getType()?.name()!!, null, toid))
                     }
                 }
+                */
 
             }
-        })
+        }
+        //db.db.registerTransactionEventHandler(thandler)
     }
 
 
@@ -181,8 +183,11 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
     override fun setValue(id: U, kind: String, p: String, v: Any?) {
         tx {
             val n = node(id, kind)
-            if(n==null || !n.hasProperty(p))
-            else if(v!=null) n.setProperty(p, v) else n.removeProperty(p)
+            if(n!=null) {
+              val old : Any? = if(n.hasProperty(p)) n.getProperty(p) else null
+              if(v!=null) n.setProperty(p, v) else n.removeProperty(p)
+              subject.onNext(UpdateEvent(kind, id, p, v, old))
+            }
         }
     }
 
@@ -215,6 +220,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                     log.error("filter interupted", e)
                 } catch(e: Throwable) {
                     log.error("ooops", e)
+                    log.error("q: ${q.q} ${q.params}")
                     obs?.onError(e)
                 }finally {
                     obs?.onCompleted()
@@ -259,7 +265,8 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         val l = res.columnAs<Node>("n")!!.toList()
         log.info { "get result: ${l}" }
         l.forEach { log.info(it.dump()) }
-        if (l.size > 1) throw IllegalStateException()
+        if (l.size > 1)
+            throw IllegalStateException()
 
         return if (l.size == 1) l[0] else null
     }
@@ -311,20 +318,31 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         }
     }
 
+    override public fun<T> atomic(work: ()->T) : T {
+        return tx({work()})
+    }
+
+    val seqlock = java.util.concurrent.Semaphore(1)
+
     public fun nextSequence(kind: String): Long {
-        return tx {
-            val merge = """
-            MERGE (n:${kind}Sequence)
-            ON CREATE n SET n.seq = 0
-            ON MATCH n SET n.seq = n.seq+1
-            RETURN n.seq as SEQ
-            """
-            val res: ExecutionResult = engine.execute(merge, mapOf())!!
-            val resourceIterator = res.columnAs<Long>("SEQ")!!
-            if (!resourceIterator.hasNext()) throw IllegalStateException()
-            val id = resourceIterator.next()
-            resourceIterator.close()
-            id
+        seqlock.acquire()
+        try {
+            return tx {
+                val merge = """
+                MERGE (n:${kind}Sequence)
+                ON CREATE SET n.seq = 0
+                ON MATCH SET n.seq = n.seq+1
+                RETURN n.seq as SEQ
+                """
+                val res: ExecutionResult = engine.execute(merge, mapOf())!!
+                val resourceIterator = res.columnAs<Long>("SEQ")!!
+                if (!resourceIterator.hasNext()) throw IllegalStateException()
+                val id = resourceIterator.next()
+                resourceIterator.close()
+                id
+            }
+        } finally {
+            seqlock.release()
         }
     }
 
@@ -444,11 +462,45 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]?.targetEntity})
         WHERE n.ID = {from}
         RETURN m.ID as ID
+        ORDER BY m.ID
         """
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<V>("ID")!!
             Observable.from(resourceIterator.toList())!!
+        }
+    }
+
+
+    override fun <V : Comparable<V>> findNthRelations(from: U, relation: String, nth: Int, desc: DomainObjectDescriptor): Observable<V> {
+        val pars : Map<String,Any> = mapOf("from" to from, "nth" to nth)
+        val q =
+                """
+        MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]?.targetEntity})
+        WHERE n.ID = {from}
+        RETURN m.ID as ID
+        ORDER BY m.ID
+        SKIP {nth} LIMIT 1
+        """
+        return tx {
+            val executionResult = engine.execute(q, pars)
+            val resourceIterator = executionResult?.columnAs<V>("ID")!!
+            Observable.from(resourceIterator.toList())!!
+        }
+    }
+
+    override fun <V:Comparable<V>> countRelations(from: U, relation: String, desc: DomainObjectDescriptor): Observable<Int> {
+        val pars = mapOf("from" to from)
+        val q =
+                """
+        MATCH (n:${desc.entity})-[r:$relation]->(m:${desc.descriptors[relation]?.targetEntity})
+        WHERE n.ID = {from}
+        RETURN COUNT(m.ID) as N
+        """
+        return tx {
+            val executionResult = engine.execute(q, pars)
+            val resourceIterator = executionResult?.columnAs<Long>("N")!!
+            Observable.from(resourceIterator.toList())!!.map {it?.toInt()}!!
         }
     }
 
@@ -463,8 +515,10 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         RETURN r
         """
         tx {
+            log.info("ADD RELATION ${q}: $pars")
             engine.execute(q, pars)
         }
+        subject.onNext(UpdateEvent(desc.entity, from.id(), relation, to.id(), null))
     }
 
 
@@ -478,41 +532,81 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         RETURN m.ID as ID
         """
         tx {
+            log.info("REMOVE RELATION ${q}: $pars")
             engine.execute(q, pars)
         }
+        subject.onNext(UpdateEvent(desc.entity, from, relation, null, to))
     }
 
 
     override fun  schema(cls: Class<*>, desc: DomainObjectDescriptor) {
+        log.info("SCHEMA ${desc.entity}")
         tx {
             val i = db.db.index()
             i?.nodeIndexNames()?.forEach {
                 log.info(it)
             }
         }
+        try {
+            tx {
+                if (!(db.db.index()?.existsForNodes(":${desc.entity}(KIND)")?:false))
+                {
+                    val q = """
+                                CREATE INDEX ON :${desc.entity}(KIND)
+                                """
+                    log.info("$q")
+                    engine.execute(
+                            q
+                    )
+                }
+            }
+        } catch(e: Exception) {
+            if (e.getCause() is AlreadyIndexedException) {
+                log.warn(e.getMessage())
+            } else throw e
+        }
         desc.indices.forEach {
 
             try {
                 tx {
                     if (!(db.db.index()?.existsForNodes(":${desc.entity}($it)")?:false))
-                        engine.execute(
-                                """
+                    {
+                        val q = """
                             CREATE INDEX ON :${desc.entity}($it)
                             """
+                        log.info(q)
+                        engine.execute(
+                                q
                         )
+                    }
                 }
             } catch(e: CypherExecutionException) {
                 if (e.getCause() is AlreadyIndexedException) {
                     log.warn(e.getMessage())
                 }
+                else throw e
             }
         }
-        desc.uniques.forEach {
-            val label = DynamicLabel.label(desc.entity)
-            tx {
-                if (!(db.db.schema()!!.getConstraints(label)?.iterator()?.hasNext()?:false))
-                    db.db.schema()!!.constraintFor(label)!!.on(it)!!.unique()!!.create()
+        val label = DynamicLabel.label(desc.entity)
+        tx {
+            desc.uniques.forEach {
+                val q = """
+                            CREATE CONSTRAINT ON (n:${desc.entity}) ASSERT n.${it} IS UNIQUE
+                            """
+                log.info(q)
+                engine.execute(
+                        q
+                )
             }
+        }
+        tx {
+            val q = """
+                            CREATE CONSTRAINT ON (n:${desc.entity}) ASSERT n.ID IS UNIQUE
+                            """
+            log.info(q)
+            engine.execute(
+                    q
+            )
         }
     }
  }
@@ -580,11 +674,14 @@ class Neo4jFilterFactory {
 
     fun<T : LivingElement<U>, U : Comparable<U>> relation(on:String, f: RelationFilter<T, U>, pars: MutableMap<String, Any> = HashMap(), matches:MutableMap<String,String>): String {
         val par = "$on${matches.size()}"
-        matches[par] = "($par:${f.kind})"
+        matches[par] = "($par:${f.f.kind})"
+        val rpar = "r${matches.size()}"
         if(f.relation==FilterRelations.FROM) {
-            return "(($on)<-[:${f.property}]-($par) AND ${clause<LivingElement<Comparable<Any>>,Comparable<Any>,Comparable<Any>>(par, f.f as ElementFilter<LivingElement<Comparable<Any>>,Comparable<Any>>, pars, matches) })"
+            matches[rpar] = "($on)<-[:${f.property}]-($par)"
+            return " ${clause<LivingElement<Comparable<Any>>,Comparable<Any>,Comparable<Any>>(par, f.f as ElementFilter<LivingElement<Comparable<Any>>,Comparable<Any>>, pars, matches) }"
         } else {
-            return "(($on)-[:${f.property}]->($par) AND ${clause<LivingElement<Comparable<Any>>,Comparable<Any>,Comparable<Any>>(par, f.f as ElementFilter<LivingElement<Comparable<Any>>,Comparable<Any>>, pars, matches) })"
+            matches[rpar] = "($on)-[:${f.property}]->($par)"
+            return " ${clause<LivingElement<Comparable<Any>>,Comparable<Any>,Comparable<Any>>(par, f.f as ElementFilter<LivingElement<Comparable<Any>>,Comparable<Any>>, pars, matches) }"
         }
     }
 

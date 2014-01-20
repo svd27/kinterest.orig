@@ -15,7 +15,7 @@
         <jetty.version>9.0.5.v20130815</jetty.version>
         <junit.version>4.10</junit.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <neo4j.version>2.0.0-M06</neo4j.version>
+        <neo4j.version>2.0.0</neo4j.version>
         <version.derby>10.10.1.1</version.derby>
     </properties>
 
@@ -24,6 +24,7 @@
         <module>jetty</module>
         <module>kineo4j</module>
         <module>examples</module>
+        <module>kInStyle</module>
     </modules>
 
     <build>

@@ -42,6 +42,9 @@ import ch.passenger.kinterest.service.KISession
 import ch.passenger.kinterest.service.KIPrincipal
 import rx.plugins.RxJavaErrorHandler
 import ch.passenger.kinterest.entityName
+import ch.passenger.kinterest.style.styleApplication
+import ch.passenger.kinterest.service.ServiceDescriptor
+import ch.passenger.kinterest.style.styleServices
 
 
 /**
@@ -49,19 +52,7 @@ import ch.passenger.kinterest.entityName
  */
 val log = LoggerFactory.getLogger("diaries")!!
 
-val app = KIApplication("diaries", listOf(
-        SimpleServiceDescriptor(javaClass<InterestService<DiaryOwner,Long>>()) {
-            InterestService(Universe.galaxy(javaClass<DiaryOwner>().entityName())!!)
-        },
-        SimpleServiceDescriptor(javaClass<InterestService<Diary,Long>>()) {
-            InterestService(Universe.galaxy(javaClass<Diary>().entityName())!!)
-        },
-        SimpleServiceDescriptor(javaClass<InterestService<DiaryDayEntry,Long>>()) {
-            InterestService(Universe.galaxy(javaClass<DiaryDayEntry>().entityName())!!)
-        }
-))
 
-val session = KISession(KIPrincipal.ANONYMOUS, app)
 public fun main(args: Array<String>) {
     /*
 Logger.getLogger("").getHandlers().forEach {
@@ -82,10 +73,24 @@ Logger.getLogger("").getHandlers().forEach {
     val srv = org.neo4j.server.WrappingNeoServer(api)
     srv.start()
 
-    boostrapDomain(Neo4jDbWrapper(db))
+    val neojDbWrapper = Neo4jDbWrapper(db)
+    boostrapDomain(neojDbWrapper)
+
+    val services : Iterable<ServiceDescriptor<*>> = listOf(
+            SimpleServiceDescriptor(javaClass<InterestService<DiaryOwner,Long>>()) {
+                InterestService(Universe.galaxy(javaClass<DiaryOwner>().entityName())!!)
+            },
+            SimpleServiceDescriptor(javaClass<InterestService<Diary,Long>>()) {
+                InterestService(Universe.galaxy(javaClass<Diary>().entityName())!!)
+            },
+            SimpleServiceDescriptor(javaClass<InterestService<DiaryDayEntry,Long>>()) {
+                InterestService(Universe.galaxy(javaClass<DiaryDayEntry>().entityName())!!)
+            }
+    )
 
 
 
+    val app = KIApplication("diaries", services+styleServices(neojDbWrapper))
     jetty {
         connectors {
             array(serverConnector {
@@ -99,6 +104,7 @@ Logger.getLogger("").getHandlers().forEach {
     }.start()
 
 
+    /*
     session.current()
 
     val diaries = Universe.galaxy<Diary,Long>(javaClass<Diary>().entityName())!!
@@ -118,6 +124,7 @@ Logger.getLogger("").getHandlers().forEach {
     session.current()
     val uf = UserFrame(service)
     uf.show()
+    */
 }
 
 class UserFrame(val users:InterestService<DiaryOwner,Long>) {
@@ -131,8 +138,8 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
         users.filter(iuser, FilterFactory(Universe.galaxy<DiaryOwner,Long>("DiaryOwner") as Galaxy<DiaryOwner,Long>, javaClass<DiaryOwner>(), users.galaxy.descriptor).gte("id", 0.toLong()).toJson())
         val galaxy = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
         var ain :Interest<DiaryOwner,Long>? = null
-        galaxy.withInterestDo {
-            ain = it[iuser]
+        galaxy.withInterestDo(iuser) {
+            ain = it
         }
         val tbl = JTable(InterestTableModel(ain!!, users))
         tbl.getTableHeader()?.addMouseListener(object : MouseAdapter() {

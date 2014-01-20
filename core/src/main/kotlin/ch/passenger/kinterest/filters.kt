@@ -249,12 +249,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
                 val bf = eq<Comparable<Any>>("id", element.id() as Comparable<Any>) as ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>
                 tf = ff.and(ff.to(sp, bf) , tf)
                 val res = tg.filter(tf, array(), 0, 1).timeout(1000, TimeUnit.MILLISECONDS)!!.toBlockingObservable()!!.toFuture()!!.get()
-                //TODO: just return res != null
-                if(res!=null) {
-                    val oe = galaxy.getValue(res as U, sp) as LivingElement<Comparable<Any>>
-                    return oe.id() == element.id()
-                }
-                return false
+                return res != null
             }
             override val relation: FilterRelations = FilterRelations.FROM
             override val target: Class<T> = this@FilterFactory.target

@@ -7,12 +7,12 @@
 
 
     <parent>
-        <groupId>ch.passenger.kinterest.examples</groupId>
-        <artifactId>examples</artifactId>
+        <groupId>ch.passenger.kinterest</groupId>
+        <artifactId>kInterest</artifactId>
         <version>0.1-SNAPSHOT</version>
     </parent>
-    <groupId>ch.passenger.kinterest.examples</groupId>
-    <artifactId>kDiaries</artifactId>
+    <groupId>ch.passenger.kinterest</groupId>
+    <artifactId>kInStyle</artifactId>
     <version>0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
@@ -25,11 +25,6 @@
         <dependency>
             <groupId>ch.passenger.kinterest</groupId>
             <artifactId>jetty</artifactId>
-            <version>0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>ch.passenger.kinterest</groupId>
-            <artifactId>kInStyle</artifactId>
             <version>0.1-SNAPSHOT</version>
         </dependency>
     </dependencies>

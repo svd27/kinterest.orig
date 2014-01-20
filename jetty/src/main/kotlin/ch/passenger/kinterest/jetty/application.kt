@@ -217,8 +217,8 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
     val patClear  = Pattern.compile("/([0-9]+)/clear")
     val patRelAdd  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/add/([0-9]+)")
     val patRelRem  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/remove/([0-9]+)")
-    val patRelInt  = Pattern.compile("/entity/([0-9]+)/([A-Za-z]+)/interest/([A-Za-z]+)")
     val patRefresh  = Pattern.compile("/([0-9]+)/refresh")
+    val patAction = Pattern.compile("/entity/([0-9]+)/action/([A-Za-z]+)")
 
 
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
@@ -288,21 +288,6 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             val target : Long = java.lang.Long.parseLong(mradd.group(3)!!)
             service.add(eid, prop, target)
             ack(resp)
-            return
-        }
-
-        val mrint = patRelInt.matcher(path)
-        if(mrint.matches()) {
-            val eid : Long = java.lang.Long.parseLong(mrint.group(1)!!)
-            val prop = mrint.group(2)!!
-            val name = mrint.group(3)!!
-            val id= service.relint(eid, prop, name)
-            val json = om.createObjectNode()!!
-            json.put("response", "ok")
-            json.put("interest", id)
-            resp.setContentType("application/json")
-            resp.getWriter()?.print(json.toString()!!)
-            resp.flushBuffer()
             return
         }
 
@@ -385,8 +370,9 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
 
         val mce = patCreateEntity.matcher(path)
         if(mce.matches()) {
-            service.createElement(Jsonifier.valueMap(om.readTree(read(req.getInputStream()!!)) as ObjectNode, service.galaxy.descriptor))
-            ack(resp)
+            val id = service.createElement(Jsonifier.valueMap(om.readTree(read(req.getInputStream()!!)) as ObjectNode, service.galaxy.descriptor))
+
+            ack(resp, mapOf<String,Any>("id" to id))
             return
         }
 
@@ -396,6 +382,20 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             val id = Integer.parseInt(sint)
             service.orderBy(id, om.readTree(read(req.getInputStream()!!)) as ArrayNode)
             ack(resp)
+            return
+        }
+
+        val mact = patAction.matcher(path)
+        if(mact.matches()) {
+            val eid = java.lang.Long.parseLong(mact.group(1)!!)
+            val action = mact.group(2)!!
+            val pars = om.readTree(read(req.getInputStream()!!)) as ArrayNode
+            val res = service.call<Long>(eid, action, pars)
+            val fields = HashMap<String,Any>()
+            if(res!=null) {
+                fields["result"] =  res as Any
+            }
+            ack(resp, fields)
             return
         }
 
@@ -432,11 +432,26 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
         currentApp.set(app)
         s.current()
         log.info("service ${req.getPathInfo()}")
-        super.service(req, resp)
+        try {
+            super.service(req, resp)
+        } catch(e: Throwable) {
+            log.error("problem on $req", e)
+            ack(e, resp)
+        }
     }
 
-    protected fun ack(resp:HttpServletResponse) {
-        resp.getWriter()?.write("{response: 'ok'}")
+    protected fun ack(resp:HttpServletResponse, fields:Map<String,Any> = mapOf()) {
+        val js = om.createObjectNode()!!
+        js.put("response", "ok")
+        fields.entrySet().forEach {
+            js.put(it.getKey(), om.valueToTree<JsonNode>(it.getValue()))
+        }
+        resp.getWriter()?.write(om.writeValueAsString(js)!!)
+        resp.flushBuffer()
+    }
+
+    protected fun ack(e:Throwable, resp:HttpServletResponse) {
+        resp.getWriter()?.write("{response: 'error', message: '${e.getMessage()}'}")
         resp.flushBuffer()
     }
 
@@ -482,7 +497,7 @@ class DumperServlet(app:KIApplication) : KIServlet(app) {
 }
 
 class StaticServlet(val root:File) : HttpServlet() {
-    protected open val log: Logger = LoggerFactory.getLogger(this.javaClass)!!
+    protected val log: Logger = LoggerFactory.getLogger(this.javaClass)!!
     override fun service(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
         if (resp == null) throw IllegalStateException()
