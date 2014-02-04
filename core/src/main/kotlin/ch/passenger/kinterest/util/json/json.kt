@@ -64,7 +64,9 @@ public object Jsonifier {
                 on.put("interest", event.interest)
                 if(event.order==null)
                     throw IllegalStateException("BOOOM")
+                log.info("jsonify ${event.order}")
                 event.order.forEach {
+                    log.info("jsonify $it")
                     if(it==null)
                         throw IllegalStateException("BOOOM")
                     an.add(om.valueToTree<JsonNode>(it))

@@ -480,9 +480,9 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
         val idx = order.indexOf(e.id)
         log.info("interest: $sourceType.$id consume: $e idx: $idx")
         if (idx >= 0) {
-            val el = at(idx)
+            val el = galaxy.get(e.id)
             log.info("UPD: $el")
-            if (el == null) {log.warn("Galaxy does not know ${el.id()}"); return}
+            if (el == null) {log.warn("Galaxy does not know ${e.id}"); return}
             if (!filter.accept(el)) {
                 log.info("${sourceType}.${e.id} removed coz filter rejects")
                 remove(el.id())

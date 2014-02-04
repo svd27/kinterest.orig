@@ -25,6 +25,7 @@
         <module>kineo4j</module>
         <module>examples</module>
         <module>kInStyle</module>
+        <module>kI18n</module>
     </modules>
 
     <build>
