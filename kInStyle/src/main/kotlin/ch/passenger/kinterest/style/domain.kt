@@ -36,7 +36,7 @@ public trait CSSStylesheet : LivingElement<Long> {
             if(it.trim().length>0) {
                 val pv = it.split(":")
                 if(pv.size==2) {
-                    val id = gp.create(mapOf("name" to pv[0], "value" to pv[1]))
+                    val id = gp.create(mapOf("name" to pv[0], "value" to pv[1], "role" to pv[0]))
                     val p = gp.get(id)!!
                     rule.properties.add(p)
                 }
@@ -86,6 +86,7 @@ public trait CSSStyleRule : LivingElement<Long> {
 public trait CSSProperty : LivingElement<Long> {
     Id
     override fun id(): Long
+    var role : String [Label Index] get
     val name : String [Label Index] get
     var value : String
 }

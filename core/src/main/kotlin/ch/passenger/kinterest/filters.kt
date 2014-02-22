@@ -12,6 +12,7 @@ import java.util.Date
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import ch.passenger.kinterest.util.firstThat
+import ch.passenger.kinterest.util.json.Jsonifier
 
 /**
  * Created by svd on 14/12/13.
@@ -371,6 +372,9 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
         val cls : Class<*>? = meth?.getReturnType()
 
         log.info("node $node cls $cls target: $target")
+        if(descriptor.descriptors[prop]!=null && descriptor.descriptors[prop]!!.classOf.isAssignableFrom(javaClass<Date>())) {
+            return Jsonifier.readDate(node.textValue()!!) as Comparable<Any>
+        }
         return om.treeToValue<Any>(node, cls!! as Class<Any>)!! as Comparable<Any>
     }
 }

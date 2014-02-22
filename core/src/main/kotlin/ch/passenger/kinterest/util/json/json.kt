@@ -166,6 +166,10 @@ public object Jsonifier {
         return m
     }
 
+    public fun readDate(s:String) : Date {
+        return jsonDate.parse(s)!!
+    }
+
     private fun<K : Any, V : Any?> asMap(it: Iterable<Pair<K, V>>) {
         val m = HashMap<K, V>()
         it.forEach { m.putAll(it) }

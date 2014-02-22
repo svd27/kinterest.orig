@@ -372,11 +372,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
     }
     protected fun load() {
         if (filter.relation == FilterRelations.STATIC) {emitOrder(); return}
-        val del = ArrayList(order)
         order.clear()
-        del.forEach {
-            order.remove(it)
-        }
         log.info("$name: loading.... $offset->$limit")
         refresh()
     }

@@ -666,10 +666,18 @@ class Neo4jFilterFactory {
         //TODO: HACK, we need a strategic solution for this
         if(f.value.javaClass.isEnum()) {
             pars.put(pn, (f.value as Enum<*>).name())
+        } else if(f.value is Date) {
+            pars.put(pn, convertDate(f.value))
         }
         else pars.put(pn, f.value)
         log.info("$pars")
         return "($on.${if (f.property == "id") "ID" else f.property} ${op(f.relation)} { $pn })"
+    }
+
+    private val sdf = SimpleDateFormat("yyyyMMddHHmmssSSS")
+
+    fun convertDate(d:Date) : Long {
+        return java.lang.Long.parseLong(sdf.format(d))
     }
 
     fun<T : LivingElement<U>, U : Comparable<U>> relation(on:String, f: RelationFilter<T, U>, pars: MutableMap<String, Any> = HashMap(), matches:MutableMap<String,String>): String {

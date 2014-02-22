@@ -69,24 +69,23 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     }
     var entities : EntityPublisher? = null
 
-    fun addInterest(i:Interest<LivingElement<Comparable<Any?>>,Comparable<Any?>>) {
-        interests[id] = i
-            subjects[i.id] = i.observable.subscribe(object :Observer<Event<Comparable<Any?>>> {
-
-                override fun onCompleted() {
-                    subjects[id]?.unsubscribe()
-                    interests[id]?.close()
-                    interests.remove(id)
-                    log.warn("interest $id done")
-                }
-                override fun onError(e: Throwable?) {
-                    log.error(e?.getMessage(), e)
-                    e?.printStackTrace()
-                }
-                override fun onNext(args: Event<Comparable<Any?>>?) {
-                    events?.publish(listOf(args!! as Event<Comparable<Any>>))
-                }
-            })!!
+    fun addInterest(i: Interest<LivingElement<Comparable<Any?>>, Comparable<Any?>>) {
+        interests[i.id] = i
+        subjects[i.id] = i.observable.subscribe(object :Observer<Event<Comparable<Any?>>> {
+            override fun onCompleted() {
+                subjects[i.id]?.unsubscribe()
+                interests[i.id]?.close()
+                interests.remove(i.id)
+                log.warn("interest $id done")
+            }
+            override fun onError(e: Throwable?) {
+                log.error(e?.getMessage(), e)
+                e?.printStackTrace()
+            }
+            override fun onNext(args: Event<Comparable<Any?>>?) {
+                events?.publish(listOf(args!! as Event<Comparable<Any>>))
+            }
+        })!!
     }
     fun removeInterest(i:Interest<*,*>) {
         interests.remove(i)
@@ -130,6 +129,31 @@ public class SimpleServiceDescriptor<T : KIService>(service: Class<T>, val creat
     override fun create(): T = creator()
 }
 
+object TicketBooth {
+    private var current : Int = 0
+    public fun book() : Int = current++
+}
+
+enum class RequestState {
+    STARTED SUCCEEDED FAILED
+}
+
+open class KIServiceRequest<T>() {
+    public val ticket : Int = TicketBooth.book()
+    public var state : RequestState = RequestState.STARTED
+      protected set(v) {$state=v}
+    protected var result : T? = null
+    protected var error : Exception? = null
+    public fun result() : T {
+        if(state==RequestState.SUCCEEDED) {
+            return result!!
+        }
+        if(state==RequestState.FAILED)
+            throw error!!
+
+        throw IllegalStateException()
+    }
+}
 
 public open class KIService(name: String) {
     public val id: Int = ni()
@@ -202,7 +226,8 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
     }
 
     public fun add(id:Int, eid:Comparable<Any>) {
-        KISession.current()!!.interests.values().filter { it.id == id }.forEach { val ai = it as Interest<T,U>; it.add(eid as U) }
+        log.info("looking for $id in ${KISession.current()!!.interests.size} interests")
+        KISession.current()!!.interests.values().filter { log.info("consider ${it.id} target: $id"); it.id == id }.forEach { val ai = it as Interest<T,U>; it.add(eid as U) }
     }
 
     public fun remove(id:Int, eid:Comparable<Any>) {
