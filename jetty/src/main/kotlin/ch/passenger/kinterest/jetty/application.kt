@@ -53,12 +53,12 @@ import ch.passenger.kinterest.ElementFilter
 
 //private val log = LoggerFactory.getLogger(javaClass<ApplicationServlet>().getPackage()!!.getName())!!
 
-class ApplicationServlet(val serverContext: ServletContextHandler, val app: KIApplication) {
+class ApplicationServlet(val serverContext: ServletContextHandler, val app: KIApplication, val rootPath:String) {
     {
         log.info("APP")
         serverContext.servlets {
             val res: MutableMap<String, ServletHolder> = HashMap()
-            val appServlet = AppServlet(app)
+            val appServlet = AppServlet(app, rootPath)
             appServlet.init(this)
 
             res
@@ -132,11 +132,11 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 }
 
 
-class AppServlet(app: KIApplication) : KIServlet(app) {
+class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
     fun init(ctx: ServletContextHandler) {
         ctx.addServlet(ServletHolder(this), "/${app.name}")
         ctx.addServlet(ServletHolder(DumperServlet(app)), "/${app.name}/dump")
-        ctx.addServlet(ServletHolder(StaticServlet(File("/Users/svd/dev/proj/kotlin/kIjs/classes/artifacts/kjs"))), "/${app.name}/static/*")
+        ctx.addServlet(ServletHolder(StaticServlet(File(rootPath))), "/${app.name}/static/*")
         app.descriptors.forEach {
             log.info("service .... $it")
             val s = it.create()

@@ -60,7 +60,6 @@ import ch.passenger.kinterest.util.with
 import javax.persistence.OneToOne
 import javax.persistence.OneToMany
 import ch.passenger.kinterest.DomainObjectDescriptor
-import ch.passenger.kinterest.util.filter
 import org.neo4j.cypher.CypherExecutionException
 import org.neo4j.kernel.api.exceptions.schema.AlreadyIndexedException
 import rx.concurrency.ExecutorScheduler
@@ -280,7 +279,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         tx {
             val rels = values.keySet().filter { descriptor.descriptors[it]!!.relation }
 
-            val inits = values.filter { !rels.contains(it.first) }.map { "${it.getKey()}: {${it.getKey()}}" }.reduce { a, b -> "$a, $b" }
+            val inits = values.filter { !rels.contains(it.key) }.map { "${it.key}: {${it.key}}" }.reduce { a, b -> "$a, $b" }
             val q: String? = """
             MERGE (n:$kind {ID: {id}, KIND: "${descriptor.entity}"${if (inits.length > 0) ", " else ""} $inits})
             RETURN n

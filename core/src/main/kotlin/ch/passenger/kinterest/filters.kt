@@ -138,7 +138,6 @@ abstract class RelationFilter<T:LivingElement<U>,U:Comparable<U>>(val property:S
 
 class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<T>, val descriptor:DomainObjectDescriptor) where T : LivingElement<U> {
     fun<V:Comparable<V>> neq(property:String, value:V) : PropertyFilter<T,U,V> {
-        val n : jet.Number
         return binrel<V>(property, value, FilterRelations.NEQ) {
             (e,v) -> if(v==null) false else e.compareTo(v!! as V) != 0
         }

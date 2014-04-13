@@ -45,15 +45,54 @@ import ch.passenger.kinterest.entityName
 import ch.passenger.kinterest.style.styleApplication
 import ch.passenger.kinterest.service.ServiceDescriptor
 import ch.passenger.kinterest.style.styleServices
+import org.neo4j.server.configuration.ServerConfigurator
+import org.neo4j.server.configuration.Configurator
+import org.eclipse.jetty.util.ssl.SslContextFactory
+import org.eclipse.jetty.server.HttpConfiguration
+import org.eclipse.jetty.server.SecureRequestCustomizer
+import org.eclipse.jetty.server.SslConnectionFactory
+import org.eclipse.jetty.server.ServerConnector
+import org.eclipse.jetty.server.HttpConnectionFactory
+import java.io.File
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.databind.JsonNode
 
 
 /**
  * Created by svd on 16/12/13.
  */
 val log = LoggerFactory.getLogger("diaries")!!
-
+var port : Int = 3333
+var neo4jport : Int = 7474
 
 public fun main(args: Array<String>) {
+    var rootPath = "/Users/svd/dev/proj/kotlin/kIjs/classes/artifacts/kjs";
+    /*
+    if(args.size>0) {
+        rootPath = args[0]
+    }
+    if(args.size>1) {
+        port = java.lang.Integer.parseInt(args[1])
+    }
+    if(args.size>2) {
+        neo4jport = java.lang.Integer.parseInt(args[2])
+    }
+    */
+    var f  = File("./kinterest.json")
+    if(args.size==1) {
+        f = File(args[0])
+    }
+
+    val json : JsonNode = ObjectMapper().readTree(f)!!
+    rootPath = json.path("root")!!.textValue()!!
+    port = json.path("port")!!.intValue()
+    neo4jport = json.path("neo4jport")!!.intValue()
+    val sslport = json.path("sslport")!!.intValue()
+    val keystore = json.path("keystore")!!.textValue()!!
+    val keystorepwd = json.path("keystorepwd")!!.textValue()!!
+    val keymgrpwd = json.path("keymgrpwd")!!.textValue()!!
+
+
     /*
 Logger.getLogger("").getHandlers().forEach {
     it.setLevel(Level.FINE)
@@ -70,7 +109,10 @@ Logger.getLogger("").getHandlers().forEach {
     })
     val db = org.neo4j.graphdb.factory.GraphDatabaseFactory().newEmbeddedDatabase("./neo/data")
     val api : GraphDatabaseAPI = db as GraphDatabaseAPI
-    val srv = org.neo4j.server.WrappingNeoServer(api)
+    val cfg = ServerConfigurator(api)
+    cfg.configuration()!!.setProperty(Configurator.WEBSERVER_ADDRESS_PROPERTY_KEY, "0.0.0.0")
+    cfg.configuration()!!.setProperty(Configurator.WEBSERVER_PORT_PROPERTY_KEY, neo4jport)
+    val srv = org.neo4j.server.WrappingNeoServer(api, cfg)
     srv.start()
 
     val neojDbWrapper = Neo4jDbWrapper(db)
@@ -91,15 +133,33 @@ Logger.getLogger("").getHandlers().forEach {
 
 
     val app = KIApplication("diaries", services+styleServices(neojDbWrapper))
+
+    val http = HttpConfiguration()
+    //http.setSecureScheme("https")
+    http.setSecurePort(sslport)
+
+    val ssl = SslContextFactory()
+    ssl.setKeyStorePath(keystore)
+    ssl.setKeyManagerPassword(keymgrpwd)
+    ssl.setKeyStorePassword(keystorepwd)
+    val https = HttpConfiguration(http)
+    https.addCustomizer(SecureRequestCustomizer())
+
+
+
     jetty {
         connectors {
             array(serverConnector {
-                setPort(3333)
+                setPort(port)
             })
         }
 
+        val sslcon = ServerConnector(this, SslConnectionFactory(ssl, "http/1.1"),HttpConnectionFactory(https) )
+        sslcon.setPort(sslport)
+        addConnector(sslcon)
+
         servlets {
-            AppServlet(app).init(this)
+            AppServlet(app, rootPath).init(this)
         }
     }.start()
 

@@ -17,8 +17,8 @@
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-core:2.3.0" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-databind:2.3.0" level="project" />
     <orderEntry type="library" name="Maven: javax.persistence:persistence-api:1.0.2" level="project" />
-    <orderEntry type="library" name="Maven: org.jetbrains.kotlin:kotlin-stdlib:0.6.1658" level="project" />
-    <orderEntry type="library" name="Maven: org.jetbrains.kotlin:kotlin-runtime:0.6.1658" level="project" />
+    <orderEntry type="library" name="Maven: org.jetbrains.kotlin:kotlin-stdlib:0.7.270" level="project" />
+    <orderEntry type="library" name="Maven: org.jetbrains.kotlin:kotlin-runtime:0.7.270" level="project" />
     <orderEntry type="library" name="Maven: org.slf4j:slf4j-api:1.7.5" level="project" />
     <orderEntry type="library" name="Maven: org.slf4j:slf4j-jdk14:1.7.5" level="project" />
     <orderEntry type="library" name="Maven: joda-time:joda-time:2.3" level="project" />

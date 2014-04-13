@@ -35,7 +35,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 public open class KIPrincipal(val principal: String, val token: String) : Principal {
 
 
-    override fun getName(): String? = principal
+    override fun getName(): String = principal
 
     override fun equals(obj: Any?): Boolean {
         if (obj is KIPrincipal) return token == obj.token
@@ -215,7 +215,7 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         }
     }
 
-    public fun retrieve(ids:jet.Iterable<U>) {
+    public fun retrieve(ids:Iterable<U>) {
         val session = KISession.current()
         session!!.app.retriever.execute {
             ids.forEach {
@@ -283,9 +283,9 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
 
 
 public trait EventPublisher {
-    fun publish(events: jet.Iterable<Event<Comparable<Any>>>)
+    fun publish(events: Iterable<Event<Comparable<Any>>>)
 }
 
 public trait EntityPublisher {
-    fun publish(entities: jet.Iterable<LivingElement<Comparable<Any>>>)
+    fun publish(entities: Iterable<LivingElement<Comparable<Any>>>)
 }

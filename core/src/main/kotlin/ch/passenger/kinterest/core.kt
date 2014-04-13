@@ -23,7 +23,6 @@ import org.jetbrains.annotations.Nullable
 import javax.persistence.Id
 import javax.persistence.UniqueConstraint
 import ch.passenger.kinterest.annotations.Index
-import ch.passenger.kinterest.util.filter
 import java.lang.reflect.Modifier
 import ch.passenger.kinterest.service.EntityPublisher
 import java.util.concurrent.BlockingDeque
@@ -231,7 +230,7 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
         return v
     }
 
-    public fun toString() : String {
+    public override fun toString() : String {
         return "${property}: rel = ${relation} classOf: ${classOf}"
     }
 }

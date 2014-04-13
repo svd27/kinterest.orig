@@ -207,14 +207,14 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         domainBuffer.append("boostrap${cn}(db)\n")
 
         body.append("""
-        public fun equals(o :Any?) : Boolean {
+        public override fun equals(o :Any?) : Boolean {
         return when(o) {
             is ${cls.getName()} ->  id().equals(o.id())
             else -> false
         }
     }
 
-    public fun hashCode() : Int = id().hashCode()
+    public override fun hashCode() : Int = id().hashCode()
         """)
 
         return """
@@ -282,7 +282,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
         val ontomany : Boolean get()  = ms[0].getAnnotation(javaClass<OneToMany>())!=null
         val unique : Boolean get()  = id || ms[0].getAnnotation(javaClass<UniqueConstraint>())!=null
 
-        public fun toString(): String = "$name: id? $id ro? $ro default: ${defval()} null: $nullable"
+        public override fun toString(): String = "$name: id? $id ro? $ro default: ${defval()} null: $nullable"
         public fun dumpAnn(): String {
             val sb = StringBuilder()
             sb.append(ms[0].getName()).append(": ")

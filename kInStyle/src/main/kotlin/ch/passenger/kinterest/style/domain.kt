@@ -76,7 +76,7 @@ public trait CSSStyleRule : LivingElement<Long> {
 
     [Expose] fun addProperty(name:String, value:String) : Long {
         val gp = Universe.galaxy<CSSProperty,Long>("CSSProperty")
-        val id = gp!!.create(mapOf("name" to name, "value" to value))
+        val id = gp!!.create(mapOf("name" to name, "value" to value, "role" to name))
         properties.add(gp.get(id)!!)
         return id
     }
