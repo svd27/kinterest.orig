@@ -14,12 +14,10 @@ import java.util.HashSet
 import java.lang.reflect.Method
 import javax.persistence.Entity
 import java.util.WeakHashMap
-import kotlin.properties.Delegates
 import rx.subjects.PublishSubject
 import java.util.Comparator
 import javax.persistence.Transient
 import javax.persistence.OneToOne
-import org.jetbrains.annotations.Nullable
 import javax.persistence.Id
 import javax.persistence.UniqueConstraint
 import ch.passenger.kinterest.annotations.Index
@@ -138,13 +136,13 @@ class DomainObjectDescriptor(val cls: Class<*>) {
             && !it.transient() && (it.getName()!!.startsWith("get") || it.getName()!!.startsWith("is")) && it.getReturnType() != javaClass<Void>()
             && it.getParameterTypes()?.size?:1 == 0 && it.getAnnotation(javaClass<Expose>()) == null
         }.forEach {
-            getters[it.propertyName()] = it
+            getters.put(it.propertyName(), it)
         }
         cls.getMethods().filter {
             !Modifier.isStatic(it.getModifiers()) && !Modifier.isPrivate(it.getModifiers())
             && !it.transient() && it.getName()!!.startsWith("set") && it.getReturnType() != javaClass<Void>()
         }.forEach {
-            setters[it.propertyName()] = it
+            setters.put(it.propertyName(), it)
         }
     }
 

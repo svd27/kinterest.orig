@@ -73,7 +73,16 @@ abstract class PropertyFilter<T,U:Comparable<U>,V:Comparable<V>>(override val ta
             }
             if(method==null) throw IllegalStateException()
         }
-        val current = method?.invoke(element) as V
+        //TODO: that wont do, need to ensure this is properly crashing
+        val any: Any?
+        try {
+            any = method?.invoke(element)
+        } catch(e: Exception) {
+            log.error("problem invoking $method", e)
+            return false
+        }
+        log.info("accept: $any")
+        val current = any as V
         var av : Any? = null
 
         //TODO: this kinda casting is really crappy,

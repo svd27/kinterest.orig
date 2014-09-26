@@ -26,7 +26,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
     private val uniqueConstraints = StringBuilder()
     val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
             "java.util.List" to "jet.MutableList", "int" to "Int", "java.lang.Long" to "Long",
-            "java.lang.Integer" to "Int");
+            "java.lang.Integer" to "Int", "boolean" to "Boolean");
     val domainBuffer = StringBuilder();
 
     {

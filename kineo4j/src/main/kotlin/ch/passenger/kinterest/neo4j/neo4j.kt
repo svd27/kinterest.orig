@@ -740,12 +740,16 @@ public fun Node.dump(): String {
 
 abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDatastore<Event<T>,T>, protected val kind: String, private val node: Node, val descriptor:DomainObjectDescriptor) : DomainObject {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject<T>>())!!
-    protected fun<U> prop(name:String, pd:DomainPropertyDescriptor): U? = store.tx {
+    protected fun<U> prop(name:String, pd:DomainPropertyDescriptor): U? =
+            store.tx {
+               _prop<U>(name, pd)
+            }
+
+    private fun<U> _prop(name:String, pd: DomainPropertyDescriptor) : U? {
         val n = if (name == "id") "ID" else name
-        if(node().hasProperty(n)) {
+        return if (node().hasProperty(n)) {
             pd.fromDataStore(node().getProperty(n)) as U?
-        }
-        else null
+        } else null
     }
 
     protected fun<U> prop(name: String, pd:DomainPropertyDescriptor, value: U?): Unit = store.tx {

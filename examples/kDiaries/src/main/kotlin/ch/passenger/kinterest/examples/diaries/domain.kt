@@ -24,6 +24,7 @@ trait Diary : LivingElement<Long> {
     val owner : DiaryOwner [OneToOne(targetEntity=javaClass<DiaryOwner>())] get
     val title : String [Label] get
     val created : Date [DefaultValue("java.util.Date()")] get
+    var published : Boolean [DefaultValue("false")] get
 }
 
 Entity(name="DiaryEntry")
