@@ -446,6 +446,7 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
         fields.entrySet().forEach {
             js.put(it.getKey(), om.valueToTree<JsonNode>(it.getValue()))
         }
+        resp.setContentType("application/json")
         resp.getWriter()?.write(om.writeValueAsString(js)!!)
         resp.flushBuffer()
     }

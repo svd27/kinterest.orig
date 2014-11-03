@@ -170,7 +170,7 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
     val enum : Boolean = getter.getReturnType()!!.isEnum()
     val nullable : Boolean get() = chknull()
     val oneToMany : Boolean get() = getter.oneToMany()
-    val classOf: Class<*> = if(oneToMany) getter.getAnnotation(javaClass<OneToMany>())!!.targetEntity()!! else getter.getReturnType()!!
+    val classOf: Class<*> = if(oneToMany) getter.getAnnotation(javaClass<OneToMany>())!!.targetEntity() else getter.getReturnType()!!
     val targetEntity : String = classOf.entityName()
     val linkType: Class<*>?;
     {

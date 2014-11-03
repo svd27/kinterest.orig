@@ -254,10 +254,7 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
 
 
     public fun refresh(id:Int) {
-        val interest = KISession.current()?.interests?.get(id)
-        if(interest != null) {
-            interest.refresh()
-        }
+        KISession.current()?.interests?.get(id)?.refresh()
     }
 
 

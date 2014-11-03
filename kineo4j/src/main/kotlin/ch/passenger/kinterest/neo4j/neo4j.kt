@@ -90,7 +90,7 @@ public fun<T> Transaction.use(tx: Transaction.() -> T): T {
 }
 
 
-class Neo4jDbWrapper(val db: GraphDatabaseService) {
+public class Neo4jDbWrapper(val db: GraphDatabaseService) {
     val engine: ExecutionEngine = ExecutionEngine(db)
 }
 
@@ -104,19 +104,23 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
             override fun afterCommit(data: TransactionData?, state: Node?) {
                 if (data == null) return
                 data.createdNodes()?.forEach {
-                    if ((it?.hasProperty("ID"))?:false && !it?.hasProperty("KIND")?:false) {
-                        val nkind = it.getProperty("KIND")?.toString()
-                        log.info("created node ${it.getId()}:$nkind")
-                        if (nkind != null)
-                            subject.onNext(CreateEvent(nkind, it.getProperty("ID") as U))
+                    if(it!=null) {
+                        if (it.hasProperty("ID") && (it.hasProperty("KIND"))) {
+                            val nkind = it.getProperty("KIND")?.toString()
+                            log.info("created node ${it.getId()}:$nkind")
+                            if (nkind != null)
+                                subject.onNext(CreateEvent(nkind, it.getProperty("ID") as U))
+                        }
                     }
                 }
                 data.deletedNodes()?.forEach {
-                    if (it?.hasProperty("ID")?:false && !it?.hasProperty("KIND")?:false) {
-                        log.info("deleted node ${it.getId()}")
-                        val nkind = it.getProperty("KIND")?.toString()
-                        if (nkind != null)
-                            subject.onNext(DeleteEvent(nkind, it.getProperty("ID") as U))
+                    if (it!=null) {
+                        if (it.hasProperty("ID") && it.hasProperty("KIND")) {
+                            log.info("deleted node ${it.getId()}")
+                            val nkind = it.getProperty("KIND")?.toString()
+                            if (nkind != null)
+                                subject.onNext(DeleteEvent(nkind, it.getProperty("ID") as U))
+                        }
                     }
                 }
                 data.assignedNodeProperties()?.forEach {
@@ -282,6 +286,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
             val inits = values.filter { !rels.contains(it.key) }.map { "${it.key}: {${it.key}}" }.reduce { a, b -> "$a, $b" }
             val q: String? = """
             MERGE (n:$kind {ID: {id}, KIND: "${descriptor.entity}"${if (inits.length > 0) ", " else ""} $inits})
+            SET n :$kind
             RETURN n
             """;
             val m: MutableMap<String, Any> = HashMap()

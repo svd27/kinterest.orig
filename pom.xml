@@ -12,11 +12,11 @@
 
     <properties>
         <!--<kotlin.version>0.1-SNAPSHOT</kotlin.version>-->
-        <kotlin.version>0.1-SNAPSHOT</kotlin.version>
+        <kotlin.version>0.9.66</kotlin.version>
         <jetty.version>9.0.5.v20130815</jetty.version>
         <junit.version>4.10</junit.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <neo4j.version>2.1.3</neo4j.version>
+        <neo4j.version>2.1.5</neo4j.version>
         <version.derby>10.10.1.1</version.derby>
     </properties>
 
