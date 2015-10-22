@@ -29,7 +29,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             "java.lang.Integer" to "Int");
     val domainBuffer = StringBuilder();
 
-    {
+    init {
         log.info("Target: ${target.getAbsolutePath()}")
         val fw: Writer = FileWriter(target)
 
@@ -87,8 +87,8 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         else cls.getName()!!
         var label = cls.getName()
         val ean = cls.getAnnotation(javaClass<Entity>())
-        if (ean is Entity && !(ean.name()?.isEmpty()?:true)) {
-            label = ean.name()
+        if (ean is Entity && !(ean.name?.isEmpty()?:true)) {
+            label = ean.name
         }
         val cimpl = "${cn}Impl"
         val mths = methods(cls)
@@ -164,14 +164,14 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                         crtInit.append("\nif(${it.name}!=null)")
 
                     crtInit.append("""
-                    ${cn}Impl.galaxy.createRelation(id, "${entity.name()}", ${it.name}.id(), "${it.name}", ${it.nullable})
+                    ${cn}Impl.galaxy.createRelation(id, "${entity.name}", ${it.name}.id(), "${it.name}", ${it.nullable})
                     """)
                 }
                 if (!it.ro) {
                     if (it.defval() == null && !it.nullable) {
                         mandPars.append(it.name).append(" : ").append(it.kind).append(if (it.nullable) "?" else "").append(", ")
                         crtInit.append("""
-                        ${cn}Impl.galaxy.createRelation(id, "${entity.name()}", ${it.name}.id(), "${it.name}", ${it.nullable})
+                        ${cn}Impl.galaxy.createRelation(id, "${entity.name}", ${it.name}.id(), "${it.name}", ${it.nullable})
                         """)
                     } else if (!it.nullable) {
                         throw IllegalStateException("${it.name} cannot generate")
@@ -182,7 +182,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                 if(it.nullable || !it.ro) throw IllegalStateException()
                 val many : OneToMany = it.ms[0].getAnnotation(javaClass<OneToMany>())!! as OneToMany
 
-                val target = many.targetEntity()!!
+                val target = many.targetEntity.java
                 var ret : Class<*>? = null
                 target.getMethods().forEach {
                     if(it.getAnnotation(javaClass<Id>())!=null) {
@@ -203,7 +203,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             }
         }
 
-        val nullables = mths.values().filter { it.nullable }.map { "\"${it.name}\"" }.makeString(",");
+        val nullables = mths.values().filter { it.nullable }.map { "\"${it.name}\"" }.joinToString(",");
         domainBuffer.append("boostrap${cn}(db)\n")
 
         body.append("""
@@ -282,7 +282,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
         val ontomany : Boolean get()  = ms[0].getAnnotation(javaClass<OneToMany>())!=null
         val unique : Boolean get()  = id || ms[0].getAnnotation(javaClass<UniqueConstraint>())!=null
 
-        public fun toString(): String = "$name: id? $id ro? $ro default: ${defval()} null: $nullable"
+        public override fun toString(): String = "$name: id? $id ro? $ro default: ${defval()} null: $nullable"
         public fun dumpAnn(): String {
             val sb = StringBuilder()
             sb.append(ms[0].getName()).append(": ")
@@ -305,13 +305,13 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
                                 if (it.getName() == "set${capName}") setter = it
                             }
                             if (setter == null)
-                                props[pn] = Prop(pn, array(it))
-                            else props[pn] = Prop(pn, array(it, setter!!))
+                                props[pn] = Prop(pn, arrayOf(it))
+                            else props[pn] = Prop(pn, arrayOf(it, setter!!))
                         }
                     }
                 } else if(it.getAnnotation(javaClass<Id>())!=null) {
                     if(!props.containsKey(it.getName()))
-                    props[it.getName()!!] = Prop(it.getName()!!, array(it))
+                    props[it.getName()!!] = Prop(it.getName()!!, arrayOf(it))
                 }
             }
         }

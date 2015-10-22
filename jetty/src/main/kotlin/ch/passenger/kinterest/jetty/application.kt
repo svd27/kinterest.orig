@@ -54,7 +54,8 @@ import ch.passenger.kinterest.ElementFilter
 //private val log = LoggerFactory.getLogger(javaClass<ApplicationServlet>().getPackage()!!.getName())!!
 
 class ApplicationServlet(val serverContext: ServletContextHandler, val app: KIApplication) {
-    {
+    private final val log = LoggerFactory.getLogger(ApplicationServlet::class.java)
+    init {
         log.info("APP")
         serverContext.servlets {
             val res: MutableMap<String, ServletHolder> = HashMap()
@@ -73,6 +74,7 @@ class ApplicationServlet(val serverContext: ServletContextHandler, val app: KIAp
 }
 
 class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublisher {
+    private final val log = LoggerFactory.getLogger(EventSocket::class.java)
     val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
     override fun onWebSocketText(message: String?) {
         log.debug(message)
@@ -101,6 +103,7 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
 
 
 class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPublisher {
+    private final val log = LoggerFactory.getLogger(EntitySocket::class.java)
     val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
     val om = ObjectMapper()
     override fun onWebSocketText(message: String?) {
@@ -178,7 +181,7 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
                 pn.put("oneToMany", pd.oneToMany)
                 if(pd.relation || pd.oneToMany) {
                     val ann = pd.classOf.getAnnotation(javaClass<Entity>())
-                    pn.put("entity", ann?.name())
+                    pn.put("entity", ann?.name)
                 } else {
                     pn.put("type", pd.getter.getReturnType()?.getName())
                 }
@@ -458,7 +461,7 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
     protected fun app(s: HttpSession): KIApplication? = s.getAttribute(APPLICATION_KEY) as KIApplication
 
 
-    class object {
+    companion  object {
         val SESSION_KEY = "KISESSION"
         val APPLICATION_KEY = "KIAPP"
     }
@@ -516,7 +519,7 @@ class StaticServlet(val root:File) : HttpServlet() {
     protected fun app(s: HttpSession): KIApplication? = s.getAttribute(APPLICATION_KEY) as KIApplication
 
 
-    class object {
+    companion  object {
         val SESSION_KEY = "KISESSION"
         val APPLICATION_KEY = "KIAPP"
     }

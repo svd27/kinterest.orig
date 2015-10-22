@@ -6,6 +6,7 @@ import javax.persistence.Entity
 import ch.passenger.kinterest.annotations.Index
 import javax.persistence.UniqueConstraint
 import javax.persistence.Id
+
 import javax.persistence.OneToMany
 import ch.passenger.kinterest.Universe
 import ch.passenger.kinterest.annotations.Expose
@@ -14,19 +15,22 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import ch.passenger.kinterest.ElementFilter
 import ch.passenger.kinterest.SortKey
 import ch.passenger.kinterest.SortDirection
+import ch.passenger.kinterest.annotations.Unique
 
 /**
  * Created by svd on 18/01/2014.
  */
 
 
-[Entity(name="CSSStylesheet")]
-public trait CSSStylesheet : LivingElement<Long> {
-    Id
+@Entity(name="CSSStylesheet")
+public interface  CSSStylesheet : LivingElement<Long> {
+    @Id
     override fun id(): Long
-    val name : String [UniqueConstraint Index Label] get
-    val rules : EntityList<CSSStylesheet,Long,CSSStyleRule,Long> [OneToMany(targetEntity=javaClass<CSSStyleRule>())] get
-    [Expose] fun addRule(selector:String, styles:String) {
+    @Index @Label @Unique
+    val name : String
+          get
+    val rules : EntityList<CSSStylesheet,Long,CSSStyleRule,Long> @OneToMany(targetEntity= CSSStyleRule::class) get
+    @Expose fun addRule(selector:String, styles:String) {
         val gr = Universe.galaxy<CSSStyleRule,Long>("CSSStyleRule")!!
         val gp = Universe.galaxy<CSSProperty,Long>("CSSProperty")!!
         val rid = gr.create(mapOf("selector" to selector))
@@ -44,7 +48,7 @@ public trait CSSStylesheet : LivingElement<Long> {
         }
     }
 
-    [Expose] fun getRules(property:Array<Long>) : Array<Long> {
+    @Expose fun getRules(property:Array<Long>) : Array<Long> {
         val gr = Universe.galaxy<CSSStyleRule,Long>("CSSStyleRule")!!
         val gp = Universe.galaxy<CSSProperty,Long>("CSSProperty")!!
         if(property.size==0) return Array(0) {0.toLong()}
@@ -56,7 +60,7 @@ public trait CSSStylesheet : LivingElement<Long> {
             subf = gp.filterFactory.or(*fa) as ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>
         }
         val f = gr.filterFactory.to("properties", subf)
-        val res = gr.filter(f, array(SortKey("id", SortDirection.ASC)), 0, 0).toList()!!.toBlockingObservable()!!.single()!!
+        val res = gr.filter(f, arrayOf(SortKey("id", SortDirection.ASC)), 0, 0).toList()!!.toBlockingObservable()!!.single()!!
 
         return Array(res.size()) {
             res[it].id()
@@ -64,17 +68,19 @@ public trait CSSStylesheet : LivingElement<Long> {
     }
 }
 
-[Entity(name="CSSStyleRule")]
-public trait CSSStyleRule : LivingElement<Long> {
-    Id
+@Entity(name="CSSStyleRule")
+public interface CSSStyleRule : LivingElement<Long> {
+    @Id
     override fun id(): Long
-    val selector : String [Label Index] get
-    val properties : EntityList<CSSStyleRule,Long,CSSProperty,Long> [OneToMany(targetEntity=javaClass<CSSProperty>())] get
-    [Expose] fun getCSS() : String {
-        return properties.map { "${it.name}: ${it.value};" }.makeString(" ", "$selector {", "}")
+    @Label @Index
+    val selector : String
+    @OneToMany(targetEntity= CSSProperty::class)
+    val properties : EntityList<CSSStyleRule,Long,CSSProperty,Long>  get
+    @Expose fun getCSS() : String {
+        return properties.map { "${it.name}: ${it.value};" }.joinToString(" ", "$selector {", "}")
     }
 
-    [Expose] fun addProperty(name:String, value:String) : Long {
+    @Expose fun addProperty(name:String, value:String) : Long {
         val gp = Universe.galaxy<CSSProperty,Long>("CSSProperty")
         val id = gp!!.create(mapOf("name" to name, "value" to value))
         properties.add(gp.get(id)!!)
@@ -82,10 +88,11 @@ public trait CSSStyleRule : LivingElement<Long> {
     }
 }
 
-[Entity(name="CSSProperty")]
-public trait CSSProperty : LivingElement<Long> {
-    Id
+@Entity(name="CSSProperty")
+public interface  CSSProperty : LivingElement<Long> {
+    @Id
     override fun id(): Long
-    val name : String [Label Index] get
+    @Label @Index
+    val name : String  get
     var value : String
 }

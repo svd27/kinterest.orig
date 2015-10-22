@@ -43,7 +43,7 @@ public open class KIPrincipal(val principal: String, val token: String) : Princi
     }
     override fun hashCode(): Int = token.hashCode()
 
-    class object {
+    companion  object {
         val ANONYMOUS = KIPrincipal("guest", "")
     }
 }
@@ -56,16 +56,16 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     val subjects : MutableMap<Int,Subscription> = HashMap()
     var events : EventPublisher? = null
     set(v) {
-        if($events==null && v!=null) {
+        if(field ==null && v!=null) {
             interests.values().forEach {
                 val subscription = it.observable.subscribe{if(it is Event<*>) events?.publish(listOf(it as Event<Comparable<Any>>))}!!
                 subjects[it.id] = subscription
             }
-        } else if($events!=null&&v==null) {
+        } else if(field !=null&&v==null) {
             subjects.values().forEach { it.unsubscribe() }
             subjects.clear()
         }
-        $events = v
+        field = v
     }
     var entities : EntityPublisher? = null
 
@@ -89,7 +89,7 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
             })!!
     }
     fun removeInterest(i:Interest<*,*>) {
-        interests.remove(i)
+        interests.remove(i.id)
         subjects[i.id]?.unsubscribe()
     }
 
@@ -105,7 +105,7 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     }
 
 
-    class object {
+    companion  object {
         private val log = LoggerFactory.getLogger("KISession")!!
         private var nid = 0
         fun nid() = ++nid
@@ -133,7 +133,7 @@ public class SimpleServiceDescriptor<T : KIService>(service: Class<T>, val creat
 
 public open class KIService(name: String) {
     public val id: Int = ni()
-    class object {
+    companion  object {
         private var ni: Int = 0
         private fun ni() = ++ni
     }
@@ -167,7 +167,7 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
     public fun orderBy(id:Int, order:ArrayNode) {
         galaxy.withInterestDo(id) {
             log.info("$order")
-            it.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.copyToArray()
+            it.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.toTypedArray()
         }
 
     }
@@ -191,7 +191,7 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         }
     }
 
-    public fun retrieve(ids:jet.Iterable<U>) {
+    public fun retrieve(ids:Iterable<U>) {
         val session = KISession.current()
         session!!.app.retriever.execute {
             ids.forEach {
@@ -245,10 +245,10 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         val om = ObjectMapper()
         val a = galaxy.sourceType.exposeds().filter {
             it.name==action
-        }.first!!
+        }.first()
         val mpars = a.method.getParameterTypes()!!
         val args = Array<Any?>(mpars.size) {null}
-        mpars.withIndices().forEach {
+        mpars.mapIndexed { i, clazz -> i to clazz }.forEach {
              args[it.first] = om.treeToValue<Object?>(pars[it.first], it.second as Class<Object?>)
         }
         log.info("invoking ${a.name}:${a.method.getReturnType()} with ${args}")
@@ -257,10 +257,10 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
 }
 
 
-public trait EventPublisher {
-    fun publish(events: jet.Iterable<Event<Comparable<Any>>>)
+public interface  EventPublisher {
+    fun publish(events: Iterable<Event<Comparable<Any>>>)
 }
 
-public trait EntityPublisher {
-    fun publish(entities: jet.Iterable<LivingElement<Comparable<Any>>>)
+public interface  EntityPublisher {
+    fun publish(entities: Iterable<LivingElement<Comparable<Any>>>)
 }

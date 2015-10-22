@@ -20,11 +20,11 @@ class ServerTests {
     private val log : Logger = LoggerFactory.getLogger(javaClass<ServerTests>())!!;
     val expect = "Hello World!"
 
-    Test
+    @Test
     fun testHelloWorld() {
         val server = jetty {
             connectors {
-                array(serverConnector {
+                arrayOf(serverConnector {
                     setPort(3333)
                 })
             }

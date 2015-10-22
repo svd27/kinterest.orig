@@ -24,14 +24,14 @@ import java.util.Date
  * Created by svd on 16/12/13.
  */
 class InterestTableModel<T:LivingElement<U>,U:Comparable<U>>(val interest:Interest<T,U>, val service:InterestService<T,U>) : AbstractTableModel() {
-    private val log = LoggerFactory.getLogger(javaClass())!!
+    private val log = LoggerFactory.getLogger(InterestTableModel::class.java)!!
     val columns : MutableList<String> = ArrayList();
     val colmap : MutableMap<String,PropertyColumn<T,U>> = HashMap();
     fun columnAt(i:Int) : PropertyColumn<T,U>? {
         return colmap[columns[i]]
     }
 
-    {
+    init {
         interest.target.getMethods().forEach {
             if(Modifier.isPublic(it.getModifiers())) {
                 val annid : Id? = it.getAnnotation(javaClass<Id>())
