@@ -95,16 +95,16 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
         val ja: ArrayNode = om.createArrayNode()!!
         events.forEach {
             val an: ArrayNode = ja
-            an.add(Jsonifier.jsonify<Comparable<Any>>(it as Event<Comparable<Any>>))
+            an.add(Jsonifier.jsonify(it))
         }
-        send(ja.toString()!!)
+        send(ja.toString())
     }
 }
 
 
 class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPublisher {
     private final val log = LoggerFactory.getLogger(EntitySocket::class.java)
-    val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
+    val kisession: KISession get() = http.getAttribute(KIServlet.SESSION_KEY) as KISession
     val om = ObjectMapper()
     override fun onWebSocketText(message: String?) {
         log.debug(message)
@@ -112,7 +112,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 
 
     override fun onWebSocketConnect(sess: Session?) {
-        super<KIWebsocketAdapter>.onWebSocketConnect(sess)
+        super.onWebSocketConnect(sess)
         log.info("ENTITIES CONNECT: $sess")
         kisession.entities = this
     }
@@ -122,7 +122,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 
         entities.map {
             Jsonifier.jsonify(
-                    it as LivingElement<Comparable<Any>>,
+                    it,
                     it.descriptor(),
                     it.descriptor().properties)
         }.filterNotNull().
@@ -130,7 +130,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 
         //val jsonNode = om.valueToTree<JsonNode>(entities)
         log.info("publish $ja")
-        getSession()?.getRemote()?.sendStringByFuture(ja!!.toString())
+        getSession()?.remote?.sendStringByFuture(ja!!.toString())
     }
 }
 
@@ -148,21 +148,22 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
                 log.info(">>>>>>>>>>>>>>>>ADDING: ${s.galaxy.descriptor.entity} on $path")
                 ctx + (path to (ServletHolder(InterestServlet(s, app))))
             }
-            ctx.socket {
-                "/${app.name}/events" to javaClass<EventSocket>() as Class<KIWebsocketAdapter>
-            }
 
-            ctx.socket {
+        }
+        ctx.socket {
+            "/${app.name}/events" to EventSocket::class.java as Class<KIWebsocketAdapter>
+        }
 
-                "/${app.name}/entities" to javaClass<EntitySocket>() as Class<KIWebsocketAdapter>
-            }
+        ctx.socket {
+
+            "/${app.name}/entities" to EntitySocket::class.java as Class<KIWebsocketAdapter>
         }
     }
 
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
         if (resp == null) throw IllegalStateException()
-        resp.setContentType("application/json")
+        resp.contentType = "application/json"
         val on = om.createObjectNode()!!
         on.put("application", app.name)
         on.put("session", KISession.current()?.id)
@@ -191,7 +192,7 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
                 pn.put("readonly", pd.setter==null)
                 pn.put("enum", pd.enum)
                 if(pd.enum) {
-                    pn.put("enumvalues", om.valueToTree<JsonNode>(pd.enumValues()))
+                    pn.set("enumvalues", om.valueToTree<JsonNode>(pd.enumValues()))
                 }
                 pn.put("label", pd.getter.label())
                 pa.add(pn)
@@ -199,10 +200,10 @@ class AppServlet(app: KIApplication) : KIServlet(app) {
             entity.put("properties", pa)
             starmap.add(entity)
         }
-        on.put("starmap", starmap)
-        resp.getWriter()?.write(on.toString()!!)
-        resp.getWriter()?.flush()
-        resp.getWriter()?.close()
+        on.set("starmap", starmap)
+        resp.writer?.write(on.toString())
+        resp.writer?.flush()
+        resp.writer?.close()
     }
 }
 
@@ -310,14 +311,6 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
         } else throw IllegalArgumentException("unknown GET: $path")
     }
 
-
-    fun Reader.eachLine(cb: (String) -> Unit) {
-        var l = readLine()
-        while (l != null) {
-            cb(l!!)
-            l = readLine()
-        }
-    }
 
     override fun doPost(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()

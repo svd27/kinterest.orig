@@ -37,11 +37,11 @@ class EntityList<T:LivingElement<U>,U:Comparable<U>,V:LivingElement<W>,W:Compara
 
 
     public fun size() : Int {
-        return store.countRelations<V>(owner.id(), name, owner.descriptor())!!.toBlockingObservable()!!.single()!!
+        return store.countRelations<V>(owner.id(), name, owner.descriptor())!!.toBlocking()!!.single()!!
     }
 
     public fun get(idx:Int) : V? {
-        return store.findNthRelations<V>(owner.id(), name, idx, owner.descriptor())!!.toBlockingObservable()!!.singleOrDefault(null)!!
+        return store.findNthRelations<V>(owner.id(), name, idx, owner.descriptor())!!.toBlocking()!!.singleOrDefault(null)!!
     }
 
 
@@ -49,7 +49,7 @@ class EntityList<T:LivingElement<U>,U:Comparable<U>,V:LivingElement<W>,W:Compara
         var core = ArrayList<V>()
 
         store.atomic {
-            val l : Collection<W> = store.findRelations<W>(owner.id(), name, owner.descriptor()).toList()!!.toBlockingObservable()!!.single()!!
+            val l : Collection<W> = store.findRelations<W>(owner.id(), name, owner.descriptor()).toList()!!.toBlocking()!!.single()!!
             l.forEach {
                 core.add(galaxy.get(it)!!)
             }

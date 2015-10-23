@@ -1,46 +1,23 @@
 package ch.passenger.kinterest
 
-import rx.Observable
-import java.util.HashMap
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import java.util.ArrayList
-import java.util.concurrent.ExecutorService
-import rx.Observer
-import rx.Observable.OnSubscribeFunc
-import rx.Subscription
+import ch.passenger.kinterest.annotations.Expose
+import ch.passenger.kinterest.annotations.Index
+import ch.passenger.kinterest.annotations.Label
+import ch.passenger.kinterest.annotations.Unique
+import ch.passenger.kinterest.service.EntityPublisher
+import ch.passenger.kinterest.util.json.EnumDecoder
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.util.HashSet
-import java.lang.reflect.Method
-import javax.persistence.Entity
-import java.util.WeakHashMap
-import kotlin.properties.Delegates
+import rx.Observable
+import rx.Observer
 import rx.subjects.PublishSubject
-import java.util.Comparator
-import javax.persistence.Transient
-import javax.persistence.OneToOne
-import org.jetbrains.annotations.Nullable
-import javax.persistence.Id
-import javax.persistence.UniqueConstraint
-import ch.passenger.kinterest.annotations.Index
-import ch.passenger.kinterest.util.filter
+import java.lang.reflect.Method
 import java.lang.reflect.Modifier
-import ch.passenger.kinterest.service.EntityPublisher
-import java.util.concurrent.BlockingDeque
-import java.util.concurrent.LinkedBlockingDeque
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import javax.persistence.OneToMany
-import java.util.Date
 import java.text.SimpleDateFormat
-import ch.passenger.kinterest.util.json.EnumDecoder
-import ch.passenger.kinterest.annotations.Label
-import javax.persistence.ManyToOne
-import ch.passenger.kinterest.util.EntityList
-import java.util.AbstractList
-import ch.passenger.kinterest.annotations.Expose
-import ch.passenger.kinterest.annotations.Unique
+import java.util.*
+import java.util.concurrent.*
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import javax.persistence.*
 
 
 /**
@@ -540,7 +517,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
         else {
             //provocate index out of bounds
             if(idx>=currentsize) return get(order[idx])!!
-            return galaxy.filter(filter, orderBy, idx, 1).timeout(500, TimeUnit.MILLISECONDS)!!.toBlockingObservable()!!.single()!!
+            return galaxy.filter(filter, orderBy, idx, 1).timeout(500, TimeUnit.MILLISECONDS)!!.toBlocking().single()
         }
     }
     public fun indexOf(t: U): Int = order.indexOf(t)

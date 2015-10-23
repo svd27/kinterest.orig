@@ -60,7 +60,7 @@ public interface  CSSStylesheet : LivingElement<Long> {
             subf = gp.filterFactory.or(*fa) as ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>
         }
         val f = gr.filterFactory.to("properties", subf)
-        val res = gr.filter(f, arrayOf(SortKey("id", SortDirection.ASC)), 0, 0).toList()!!.toBlockingObservable()!!.single()!!
+        val res = gr.filter(f, arrayOf(SortKey("id", SortDirection.ASC)), 0, 0).toList()!!.toBlocking()!!.single()!!
 
         return Array(res.size()) {
             res[it].id()
@@ -74,8 +74,8 @@ public interface CSSStyleRule : LivingElement<Long> {
     override fun id(): Long
     @Label @Index
     val selector : String
-    @OneToMany(targetEntity= CSSProperty::class)
-    val properties : EntityList<CSSStyleRule,Long,CSSProperty,Long>  get
+
+    val properties : EntityList<CSSStyleRule,Long,CSSProperty,Long>  @OneToMany(targetEntity= CSSProperty::class) get
     @Expose fun getCSS() : String {
         return properties.map { "${it.name}: ${it.value};" }.joinToString(" ", "$selector {", "}")
     }

@@ -93,7 +93,7 @@ Logger.getLogger("").getHandlers().forEach {
     val app = KIApplication("diaries", services+styleServices(neojDbWrapper))
     jetty {
         connectors {
-            array(serverConnector {
+            arrayOf(serverConnector {
                 setPort(3333)
             })
         }
@@ -155,9 +155,9 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
                         if(ain.orderBy.size==1 && ain.orderBy[0]?.property==col.property) {
                             val sortDirection = ain.orderBy[0].direction
                             val nk = SortKey(col.property, if(sortDirection==SortDirection.ASC) SortDirection.DESC else SortDirection.ASC)
-                            ain.orderBy = array(nk)
+                            ain.orderBy = arrayOf(nk)
                         } else {
-                            ain.orderBy = array(SortKey(col.property, SortDirection.ASC))
+                            ain.orderBy = arrayOf(SortKey(col.property, SortDirection.ASC))
                         }
                     } else {
                         log.info("additive sort ${col.property}")

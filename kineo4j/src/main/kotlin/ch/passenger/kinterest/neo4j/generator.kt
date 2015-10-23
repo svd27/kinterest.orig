@@ -207,27 +207,27 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         domainBuffer.append("boostrap${cn}(db)\n")
 
         body.append("""
-        public fun equals(o :Any?) : Boolean {
+        public override fun equals(o :Any?) : Boolean {
         return when(o) {
             is ${cls.getName()} ->  id().equals(o.id())
             else -> false
         }
     }
 
-    public fun hashCode() : Int = id().hashCode()
+    public override fun hashCode() : Int = id().hashCode()
         """)
 
         return """
 class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject<${id!!.kind}>(id, store, ${cn}Impl.kind,node, ${cn}Impl.galaxy.descriptor), ${cls.getName()}, ch.passenger.kinterest.LivingElement<${id!!.kind}> {
   override fun id() : ${id!!.kind} = id
-  override protected [Transient] val subject = subject()
+  override @Transient val subject = subject()
   override  fun galaxy(): ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> = ${cn}Impl.galaxy
 
 
   override fun descriptor(): ch.passenger.kinterest.DomainObjectDescriptor = galaxy().descriptor
   $body
 
-  class object {
+  companion object {
     val kind : String = "${label}"
     val galaxy : ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> get() = ch.passenger.kinterest.Universe.galaxy<${cls.getName()},${id!!.kind}>(kind)!!
         fun get(${id!!.name}:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>) : ${cls.getName()}? {

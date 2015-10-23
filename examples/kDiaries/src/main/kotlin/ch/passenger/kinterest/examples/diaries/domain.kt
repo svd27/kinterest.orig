@@ -33,6 +33,7 @@ interface  Diary : LivingElement<Long> {
 interface  DiaryDayEntry : LivingElement<Long> {
     @Id
     override fun id(): Long
+
     @Label
     var title : String  get
     @DefaultValue("java.util.Date()")
@@ -60,9 +61,7 @@ interface  DiaryOwner : LivingElement<Long> {
     var state : OwnerState
     var height : Double
     val strength : Int
-    @OneToOne(targetEntity= DiaryOwner::class)
-    var editor : DiaryOwner?
-    @OneToMany(targetEntity= DiaryOwner::class)
-    val buddies : EntityList<DiaryOwner,Long,DiaryOwner,Long>
+    var editor : DiaryOwner? @OneToOne(targetEntity= DiaryOwner::class) get
+    val buddies : EntityList<DiaryOwner,Long,DiaryOwner,Long> @OneToMany(targetEntity= DiaryOwner::class) get
 }
 

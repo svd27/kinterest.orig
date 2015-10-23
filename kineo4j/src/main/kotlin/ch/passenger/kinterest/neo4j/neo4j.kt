@@ -45,6 +45,7 @@ import ch.passenger.kinterest.DataStore
 import ch.passenger.kinterest.ElementFilter
 import org.neo4j.cypher.javacompat.ExecutionEngine
 import rx.subjects.AsyncSubject
+import rx.schedulers.Schedulers
 import org.neo4j.cypher.javacompat.ExecutionResult
 import java.util.concurrent.Executors
 import ch.passenger.kinterest.CombinationFilter
@@ -62,7 +63,6 @@ import ch.passenger.kinterest.DomainObjectDescriptor
 import ch.passenger.kinterest.util.filter
 import org.neo4j.cypher.CypherExecutionException
 import org.neo4j.kernel.api.exceptions.schema.AlreadyIndexedException
-import rx.concurrency.ExecutorScheduler
 import java.util.Date
 import java.text.SimpleDateFormat
 import ch.passenger.kinterest.Universe
@@ -91,13 +91,13 @@ public fun<T> Transaction.use(tx: Transaction.() -> T): T {
 
 
 class Neo4jDbWrapper(val db: GraphDatabaseService) {
-    val engine: ExecutionEngine = ExecutionEngine(db)
+
 }
 
 class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : DataStore<Event<U>, U> {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDatastore<T,U>>())!!;
     private val subject: PublishSubject<Event<U>> = PublishSubject.create()!!;
-    private val engine = db.engine;
+    private val engine = db.db;
 
     init {
         val thandler = object : TransactionEventHandler.Adapter<Node>() {
@@ -194,7 +194,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
     private val pool = Executors.newFixedThreadPool(4)
 
     public override fun<T : LivingElement<U>> filter(f: ElementFilter<T, U>, orderBy: Array<SortKey>, offset: Int, limit: Int): Observable<U> {
-        return Observable.create<U> {
+        val sub  : Observable.OnSubscribe<U> = Observable.OnSubscribe<U> {
             obs ->
             log.info("subscribe $obs")
             val fut = pool.submit {
@@ -204,12 +204,10 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                 try {
                     tx {
                         val res = engine.execute(q.q, q.params)
-                        //success()
-                        log.info("${res!!.executionPlanDescription()}")
 
-                        val stats = res!!.getQueryStatistics()
+                        val stats = res.getQueryStatistics()
                         log.info("stats: ${stats}")
-                        res.forEach {
+                        res.iterator().forEach {
                             val id = it["ID"]
                             if (id != null)
                                 obs?.onNext(id as U?)
@@ -225,19 +223,15 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                     obs?.onCompleted()
                 }
             }
-            object : Subscription {
+        }
 
-                override fun unsubscribe() {
-                    fut.cancel(true)
-                }
-            }
-        }!!
+        return Observable.create<U>(sub)
 
     }
 
     val exec = Executors.newFixedThreadPool(8)
 
-    override val observable: Observable<Event<U>> get() = subject.observeOn(ExecutorScheduler(exec))!!;
+    override val observable: Observable<Event<U>> get() = subject.observeOn(Schedulers.from(exec))!!;
 
     init {
         val obs = observable
@@ -333,7 +327,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                 ON MATCH SET n.seq = n.seq+1
                 RETURN n.seq as SEQ
                 """
-                val res: ExecutionResult = engine.execute(merge, mapOf())!!
+                val res = engine.execute(merge, mapOf())!!
                 val resourceIterator = res.columnAs<Long>("SEQ")!!
                 if (!resourceIterator.hasNext()) throw IllegalStateException()
                 val id = resourceIterator.next()
@@ -355,7 +349,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         if (ann != null && ann.name.isNotEmpty()) {
             return ann.name
         }
-        return el.getName()
+        return el.name
     }
 
 
