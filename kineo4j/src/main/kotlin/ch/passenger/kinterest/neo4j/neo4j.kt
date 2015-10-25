@@ -1,75 +1,29 @@
 package ch.passenger.kinterest.neo4j
 
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Method
-import java.lang.reflect.Proxy
-import org.neo4j.graphdb.GraphDatabaseService
-import org.slf4j.LoggerFactory
-import java.util.ArrayList
-import java.util.Arrays
-import java.lang.reflect.Modifier
-import java.io.File
-import javassist.ClassPool
-import java.io.FileInputStream
-import javax.persistence.Entity
-import javassist.CtClass
-import javassist.CtMethod
-import java.util.HashMap
-import javax.persistence.Id
-import org.jetbrains.annotations.NotNull
-import ch.passenger.kinterest.annotations.DefaultValue
-import java.io.FileWriter
-import java.io.Writer
-import java.io.StringWriter
-import org.neo4j.graphdb.Node
-import org.neo4j.graphdb.Label
-import org.neo4j.graphdb.DynamicLabel
-import org.neo4j.graphdb.ResourceIterable
-import org.joda.time.DateTime
-import org.neo4j.graphdb.Transaction
+import ch.passenger.kinterest.*
 import ch.passenger.kinterest.util.slf4j.info
-import ch.passenger.kinterest.LivingElement
-import org.jetbrains.annotations.Nullable
-import ch.passenger.kinterest.util.slf4j.*
-import org.neo4j.graphdb.event.TransactionEventHandler
-import org.neo4j.graphdb.event.TransactionData
-import rx.Observable
-import ch.passenger.kinterest.Event
-import rx.Subscription
-import rx.subjects.Subject
-import rx.subjects.PublishSubject
-import ch.passenger.kinterest.CreateEvent
-import ch.passenger.kinterest.UpdateEvent
-import rx.Observer
-import ch.passenger.kinterest.DataStore
-import ch.passenger.kinterest.ElementFilter
-import org.neo4j.cypher.javacompat.ExecutionEngine
-import rx.subjects.AsyncSubject
-import org.neo4j.cypher.javacompat.ExecutionResult
-import java.util.concurrent.Executors
-import ch.passenger.kinterest.CombinationFilter
-import ch.passenger.kinterest.FilterRelations
-import ch.passenger.kinterest.PropertyFilter
-import ch.passenger.kinterest.SortKey
-import ch.passenger.kinterest.SortDirection
-import ch.passenger.kinterest.DomainObject
-import ch.passenger.kinterest.DeleteEvent
-import javax.persistence.Transient
-import ch.passenger.kinterest.LivingElement
 import ch.passenger.kinterest.util.with
-import javax.persistence.OneToOne
-import javax.persistence.OneToMany
-import ch.passenger.kinterest.DomainObjectDescriptor
 import org.neo4j.cypher.CypherExecutionException
+import org.neo4j.cypher.javacompat.ExecutionEngine
+import org.neo4j.cypher.javacompat.ExecutionResult
+import org.neo4j.graphdb.DynamicLabel
+import org.neo4j.graphdb.GraphDatabaseService
+import org.neo4j.graphdb.Node
+import org.neo4j.graphdb.Transaction
+import org.neo4j.graphdb.event.TransactionData
+import org.neo4j.graphdb.event.TransactionEventHandler
 import org.neo4j.kernel.api.exceptions.schema.AlreadyIndexedException
+import org.slf4j.LoggerFactory
+import rx.Observable
+import rx.Subscription
 import rx.concurrency.ExecutorScheduler
-import java.util.Date
-import java.text.SimpleDateFormat
-import ch.passenger.kinterest.Universe
-import ch.passenger.kinterest.DomainPropertyDescriptor
-import ch.passenger.kinterest.RelationFilter
 import rx.observables.ConnectableObservable
-import ch.passenger.kinterest.Galaxy
+import rx.subjects.PublishSubject
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
+import java.util.concurrent.Executors
+import javax.persistence.Entity
 
 /**
  * Created by svd on 12/12/13.
@@ -99,7 +53,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
     private val subject: PublishSubject<Event<U>> = PublishSubject.create()!!;
     private val engine = db.engine;
 
-    {
+    init {
         val thandler = object : TransactionEventHandler.Adapter<Node>() {
             override fun afterCommit(data: TransactionData?, state: Node?) {
                 if (data == null) return
@@ -243,7 +197,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
     override val observable: Observable<Event<U>> get() = subject.observeOn(ExecutorScheduler(exec))!!;
 
-    {
+    init {
         val obs = observable
         obs.doOnEach {
             log.info("produce $it")
@@ -265,7 +219,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         RETURN n
         """
         val res = engine.execute(q, m)!!
-        val l = res.columnAs<Node>("n")!!.toList()
+        val l = res.columnAs<Node>("n")!!.asSequence().toList()
         log.info { "get result: ${l}" }
         l.forEach { log.info(it.dump()) }
         if (l.size > 1)
@@ -277,8 +231,8 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
     override fun create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor) {
         val um: MutableMap<String, Any?> = HashMap()
-        values.entrySet().filter { descriptor.uniques.containsItem(it.key) }.map { it.key to it.value }.forEach { um.putAll(it) }
-        val setter = values.entrySet().filter { !descriptor.uniques.containsItem(it.key) }.map { it.key }
+        values.entrySet().filter { descriptor.uniques.contains(it.key) }.map { it.key to it.value }.forEach { um.putAll(it) }
+        val setter = values.entrySet().filter { !descriptor.uniques.contains(it.key) }.map { it.key }
         val kind = descriptor.entity
         tx {
             val rels = values.keySet().filter { descriptor.descriptors[it]!!.relation }
@@ -298,7 +252,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
             m["id"] = id
             log.info("execute $q $m")
             val res = engine.execute(q, m)!!
-            val l = res.columnAs<Node>("n")!!.toList()
+            val l = res.columnAs<Node>("n")!!.asSequence().toList()
             log.info { "create result: ${l}" }
             l.forEach { log.info(it.dump()) }
             if (l.size > 1) throw IllegalStateException()
@@ -357,8 +311,8 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
     private fun labelForClass(el: Class<LivingElement<*>>): String {
         val ann = el.getAnnotation(javaClass<Entity>())
-        if (ann != null && ann.name().isNotEmpty()) {
-            return ann.name()!!
+        if (ann != null && ann.name.isNotEmpty()) {
+            return ann.name!!
         }
         return el.getName()
     }
@@ -451,7 +405,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
             val resourceIterator = res?.columnAs<Comparable<Any>>("ID")
             if(resourceIterator!=null && resourceIterator.hasNext())
-              del = resourceIterator?.iterator()?.take(1)?.next() as Comparable<Any>?
+              del = resourceIterator.next()
         }
         if(del!=null)
           subject.onNext(UpdateEvent(desc.entity, from, relation, null, del))
@@ -471,7 +425,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<V>("ID")!!
-            Observable.from(resourceIterator.toList())!!
+            Observable.from(resourceIterator.asSequence().toList())!!
         }
     }
 
@@ -489,7 +443,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<V>("ID")!!
-            Observable.from(resourceIterator.toList())!!
+            Observable.from(resourceIterator.asSequence().toList())!!
         }
     }
 
@@ -504,7 +458,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<Long>("N")!!
-            Observable.from(resourceIterator.toList())!!.map {it?.toInt()}!!
+            Observable.from(resourceIterator.asSequence().toList()).map {it.toInt()}
         }
     }
 
@@ -629,7 +583,7 @@ class Neo4jFilterFactory {
         val skip = " SKIP {skip}"
         val lim = if (limit > 0) " LIMIT {limit}" else ""
         val q = """
-        MATCH ${matches.values().makeString(", ")} WHERE ${ac}
+        MATCH ${matches.values.joinToString(", ")} WHERE ${ac}
         RETURN n.ID as ID
         ${createOrderBy(orderBy)}
         ${skip} ${lim}
@@ -664,16 +618,17 @@ class Neo4jFilterFactory {
 
     fun<T : LivingElement<U>, U : Comparable<U>> prop(on:String, f: PropertyFilter<T, U, *>, pars: MutableMap<String, Any> = HashMap(), matches:MutableMap<String,String>): String {
         val pn = "p${pars.size + 1}"
-        log.info("prop: ${pn} ${if (f.property == "id") "ID" else f.property} ${f.relation} ${f.value}")
+        val value = f.value
+        log.info("prop: ${pn} ${if (f.property == "id") "ID" else f.property} ${f.relation} $value")
         matches[on] = "($on:${f.kind})"
 
         //TODO: HACK, we need a strategic solution for this
-        if(f.value.javaClass.isEnum()) {
-            pars.put(pn, (f.value as Enum<*>).name())
-        } else if(f.value is Date) {
-            pars.put(pn, convertDate(f.value))
+        if(value.javaClass.isEnum()) {
+            pars.put(pn, (value as Enum<*>).name())
+        } else if(value is Date) {
+            pars.put(pn, convertDate(value))
         }
-        else pars.put(pn, f.value)
+        else pars.put(pn, value)
         log.info("$pars")
         return "($on.${if (f.property == "id") "ID" else f.property} ${op(f.relation)} { $pn })"
     }
@@ -743,7 +698,7 @@ public fun Node.dump(): String {
 }
 
 
-abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDatastore<Event<T>,T>, protected val kind: String, private val node: Node, val descriptor:DomainObjectDescriptor) : DomainObject {
+abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDatastore<Event<T>,T>, protected val kind: String, protected val node: Node, val descriptor:DomainObjectDescriptor) : DomainObject {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject<T>>())!!
     protected fun<U> prop(name:String, pd:DomainPropertyDescriptor): U? =
             store.tx {

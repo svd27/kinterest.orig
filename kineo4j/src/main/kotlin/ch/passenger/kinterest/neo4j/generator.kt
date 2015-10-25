@@ -1,21 +1,21 @@
 package ch.passenger.kinterest.neo4j
 
-import java.util.HashMap
-import javax.persistence.*
-import java.io.File
-import org.slf4j.LoggerFactory
-import javassist.ClassPool
-import java.io.Writer
-import java.io.FileWriter
-import org.joda.time.DateTime
-import java.io.FileInputStream
-import javassist.CtClass
-import java.util.ArrayList
-import javassist.CtMethod
 import ch.passenger.kinterest.annotations.DefaultValue
-import org.jetbrains.annotations.Nullable
-import java.lang.reflect.Modifier
 import ch.passenger.kinterest.annotations.Expose
+import ch.passenger.kinterest.annotations.Unique
+import javassist.ClassPool
+import javassist.CtClass
+import javassist.CtMethod
+import org.jetbrains.annotations.Nullable
+import org.joda.time.DateTime
+import org.slf4j.LoggerFactory
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileWriter
+import java.io.Writer
+import java.lang.reflect.Modifier
+import java.util.*
+import javax.persistence.*
 
 /**
  * Created by svd on 17/12/13.
@@ -29,7 +29,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             "java.lang.Integer" to "Int", "boolean" to "Boolean");
     val domainBuffer = StringBuilder();
 
-    {
+    init {
         log.info("Target: ${target.getAbsolutePath()}")
         val fw: Writer = FileWriter(target)
 
@@ -87,14 +87,14 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         else cls.getName()!!
         var label = cls.getName()
         val ean = cls.getAnnotation(javaClass<Entity>())
-        if (ean is Entity && !(ean.name()?.isEmpty()?:true)) {
-            label = ean.name()
+        if (ean is Entity && !ean.name.isEmpty()) {
+            label = ean.name
         }
         val cimpl = "${cn}Impl"
         val mths = methods(cls)
         var id: Prop? = null
         val mandatory: MutableList<Prop> = ArrayList()
-        mths.values().forEach {
+        mths.values.forEach {
             log.info("checking prop: $it")
             if (it.id) {
                 id = it
@@ -164,14 +164,14 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                         crtInit.append("\nif(${it.name}!=null)")
 
                     crtInit.append("""
-                    ${cn}Impl.galaxy.createRelation(id, "${entity.name()}", ${it.name}.id(), "${it.name}", ${it.nullable})
+                    ${cn}Impl.galaxy.createRelation(id, "${entity.name}", ${it.name}.id(), "${it.name}", ${it.nullable})
                     """)
                 }
                 if (!it.ro) {
                     if (it.defval() == null && !it.nullable) {
                         mandPars.append(it.name).append(" : ").append(it.kind).append(if (it.nullable) "?" else "").append(", ")
                         crtInit.append("""
-                        ${cn}Impl.galaxy.createRelation(id, "${entity.name()}", ${it.name}.id(), "${it.name}", ${it.nullable})
+                        ${cn}Impl.galaxy.createRelation(id, "${entity.name}", ${it.name}.id(), "${it.name}", ${it.nullable})
                         """)
                     } else if (!it.nullable) {
                         throw IllegalStateException("${it.name} cannot generate")
@@ -182,7 +182,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                 if(it.nullable || !it.ro) throw IllegalStateException()
                 val many : OneToMany = it.ms[0].getAnnotation(javaClass<OneToMany>())!! as OneToMany
 
-                val target = many.targetEntity()!!
+                val target = many.targetEntity!!.java
                 var ret : Class<*>? = null
                 target.getMethods().forEach {
                     if(it.getAnnotation(javaClass<Id>())!=null) {
@@ -203,7 +203,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             }
         }
 
-        val nullables = mths.values().filter { it.nullable }.map { "\"${it.name}\"" }.makeString(",");
+        val nullables = mths.values().filter { it.nullable }.map { "\"${it.name}\"" }.joinToString(",");
         domainBuffer.append("boostrap${cn}(db)\n")
 
         body.append("""
@@ -220,14 +220,14 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         return """
 class ${cn}Impl(val id:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>, node:org.neo4j.graphdb.Node) : ch.passenger.kinterest.neo4j.Neo4jDomainObject<${id!!.kind}>(id, store, ${cn}Impl.kind,node, ${cn}Impl.galaxy.descriptor), ${cls.getName()}, ch.passenger.kinterest.LivingElement<${id!!.kind}> {
   override fun id() : ${id!!.kind} = id
-  override protected [Transient] val subject = subject()
+  override protected @Transient val subject = subject()
   override  fun galaxy(): ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> = ${cn}Impl.galaxy
 
 
   override fun descriptor(): ch.passenger.kinterest.DomainObjectDescriptor = galaxy().descriptor
   $body
 
-  class object {
+  companion object {
     val kind : String = "${label}"
     val galaxy : ch.passenger.kinterest.Galaxy<${cls.getName()},${id!!.kind}> get() = ch.passenger.kinterest.Universe.galaxy<${cls.getName()},${id!!.kind}>(kind)!!
         fun get(${id!!.name}:${id!!.kind}, store:ch.passenger.kinterest.neo4j.Neo4jDatastore<ch.passenger.kinterest.Event<${id!!.kind}>,${id!!.kind}>) : ${cls.getName()}? {
@@ -280,7 +280,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 
         val onetoone : Boolean get()  = ms[0].getAnnotation(javaClass<OneToOne>())!=null
         val ontomany : Boolean get()  = ms[0].getAnnotation(javaClass<OneToMany>())!=null
-        val unique : Boolean get()  = id || ms[0].getAnnotation(javaClass<UniqueConstraint>())!=null
+        val unique : Boolean get()  = id || ms[0].getAnnotation(javaClass<Unique>())!=null
 
         public override fun toString(): String = "$name: id? $id ro? $ro default: ${defval()} null: $nullable"
         public fun dumpAnn(): String {
@@ -305,13 +305,13 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
                                 if (it.getName() == "set${capName}") setter = it
                             }
                             if (setter == null)
-                                props[pn] = Prop(pn, array(it))
-                            else props[pn] = Prop(pn, array(it, setter!!))
+                                props[pn] = Prop(pn, arrayOf(it))
+                            else props[pn] = Prop(pn, arrayOf(it, setter!!))
                         }
                     }
                 } else if(it.getAnnotation(javaClass<Id>())!=null) {
                     if(!props.containsKey(it.getName()))
-                    props[it.getName()!!] = Prop(it.getName()!!, array(it))
+                    props[it.getName()!!] = Prop(it.getName()!!, arrayOf(it))
                 }
             }
         }

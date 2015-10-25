@@ -1,25 +1,14 @@
 package ch.passenger.kinterest.util.json
 
-import ch.passenger.kinterest.LivingElement
-import ch.passenger.kinterest.DomainObjectDescriptor
+import ch.passenger.kinterest.*
+import ch.passenger.kinterest.util.EntityList
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
-import java.util.HashMap
 import org.slf4j.LoggerFactory
-import java.util.Date
 import java.text.DateFormat
 import java.text.SimpleDateFormat
-import ch.passenger.kinterest.Event
-import ch.passenger.kinterest.ElementEvent
-import ch.passenger.kinterest.CreateEvent
-import ch.passenger.kinterest.UpdateEvent
-import ch.passenger.kinterest.Interest
-import ch.passenger.kinterest.InterestEvent
-import com.fasterxml.jackson.databind.JsonNode
-import ch.passenger.kinterest.OrderEvent
-import ch.passenger.kinterest.InterestConfigEvent
-import ch.passenger.kinterest.Galaxy
-import ch.passenger.kinterest.util.EntityList
+import java.util.*
 
 /**
  * Created by svd on 18/12/13.
@@ -130,7 +119,7 @@ public object Jsonifier {
     public fun valueMap(entityNode: ObjectNode, desc: DomainObjectDescriptor): Map<String, Any?> {
         val m: MutableMap<String, Any?> = HashMap()
         val json = entityNode.get("values")!!
-        json.fieldNames()!!.filter { it != "id" }.forEach {
+        json.fieldNames().asSequence()!!.filter { it != "id" }.forEach {
             val pd = desc.descriptors[it]
             if(pd==null) throw IllegalArgumentException()
             if(pd.oneToMany) {

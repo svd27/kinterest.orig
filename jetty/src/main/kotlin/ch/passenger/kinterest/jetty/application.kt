@@ -1,60 +1,40 @@
 package ch.passenger.kinterest.jetty
 
-import ch.passenger.kinterest.service.KIApplication
-import org.eclipse.jetty.server.Server
+import ch.passenger.kinterest.*
+import ch.passenger.kinterest.service.*
+import ch.passenger.kinterest.util.json.Jsonifier
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.eclipse.jetty.servlet.ServletContextHandler
-import javax.servlet.Servlet
-import java.util.HashMap
 import org.eclipse.jetty.servlet.ServletHolder
-import org.eclipse.jetty.servlet.Holder
+import org.eclipse.jetty.websocket.api.Session
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
+import java.io.Reader
+import java.nio.file.Files
+import java.util.*
+import java.util.regex.Pattern
+import javax.persistence.Entity
 import javax.servlet.http.HttpServlet
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
-import ch.passenger.kinterest.service.KISession
-import ch.passenger.kinterest.service.KIPrincipal
-import ch.passenger.kinterest.service.KIService
-import com.fasterxml.jackson.databind.ObjectMapper
-import javax.servlet.ServletException
-import ch.passenger.kinterest.service.InterestService
-import org.slf4j.LoggerFactory
-import org.slf4j.Logger
 import javax.servlet.http.HttpSession
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.core.JsonFactory
-import ch.passenger.kinterest.service.EventPublisher
-import ch.passenger.kinterest.Event
-import java.util.regex.Pattern
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.JsonNode
-import org.eclipse.jetty.websocket.api.Session
-import java.io.Reader
-import com.fasterxml.jackson.databind.node.ObjectNode
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.InputStream
-import ch.passenger.kinterest.service.EntityPublisher
-import ch.passenger.kinterest.LivingElement
-import ch.passenger.kinterest.util.json.Jsonifier
-import ch.passenger.kinterest.Universe
-import javax.persistence.Entity
-import ch.passenger.kinterest.unique
-import java.io.File
-import java.nio.file.Files
-import java.io.FileInputStream
-import java.io.ByteArrayInputStream
-import ch.passenger.kinterest.label
-import java.util.ArrayList
-import ch.passenger.kinterest.ElementFilter
 
 
 /**
  * Created by svd on 21/12/2013.
  */
 
-//private val log = LoggerFactory.getLogger(javaClass<ApplicationServlet>().getPackage()!!.getName())!!
+
 
 class ApplicationServlet(val serverContext: ServletContextHandler, val app: KIApplication, val rootPath:String) {
-    {
+    private val log = LoggerFactory.getLogger(ApplicationServlet::class.java)
+    init {
         log.info("APP")
         serverContext.servlets {
             val res: MutableMap<String, ServletHolder> = HashMap()
@@ -73,13 +53,10 @@ class ApplicationServlet(val serverContext: ServletContextHandler, val app: KIAp
 }
 
 class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublisher {
+    private val log = LoggerFactory.getLogger(EventSocket::class.java)
     val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
     override fun onWebSocketText(message: String?) {
-        log.debug(message)
-        //val om = ObjectMapper()!!
-        //val json = om.readTree(message)!!
-        //val action = json.path("action")?.textValue()
-        //val target = json.path("target")?.textValue()
+
     }
 
 
@@ -101,6 +78,7 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
 
 
 class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPublisher {
+    private val log = LoggerFactory.getLogger(EntitySocket::class.java)
     val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
     val om = ObjectMapper()
     override fun onWebSocketText(message: String?) {
@@ -109,7 +87,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 
 
     override fun onWebSocketConnect(sess: Session?) {
-        super<KIWebsocketAdapter>.onWebSocketConnect(sess)
+        super.onWebSocketConnect(sess)
         log.info("ENTITIES CONNECT: $sess")
         kisession.entities = this
     }
@@ -119,13 +97,13 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 
         entities.map {
             Jsonifier.jsonify(
-                    it as LivingElement<Comparable<Any>>,
+                    it,
                     it.descriptor(),
                     it.descriptor().properties)
         }.filterNotNull().
         forEach { ja.add(it) }
 
-        //val jsonNode = om.valueToTree<JsonNode>(entities)
+
         log.info("publish $ja")
         getSession()?.getRemote()?.sendStringByFuture(ja!!.toString())
     }
@@ -178,7 +156,7 @@ class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
                 pn.put("oneToMany", pd.oneToMany)
                 if(pd.relation || pd.oneToMany) {
                     val ann = pd.classOf.getAnnotation(javaClass<Entity>())
-                    pn.put("entity", ann?.name())
+                    pn.put("entity", ann?.name)
                 } else {
                     pn.put("type", pd.getter.getReturnType()?.getName())
                 }
@@ -459,7 +437,7 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
     protected fun app(s: HttpSession): KIApplication? = s.getAttribute(APPLICATION_KEY) as KIApplication
 
 
-    class object {
+    companion object {
         val SESSION_KEY = "KISESSION"
         val APPLICATION_KEY = "KIAPP"
     }
@@ -517,7 +495,7 @@ class StaticServlet(val root:File) : HttpServlet() {
     protected fun app(s: HttpSession): KIApplication? = s.getAttribute(APPLICATION_KEY) as KIApplication
 
 
-    class object {
+    companion object {
         val SESSION_KEY = "KISESSION"
         val APPLICATION_KEY = "KIAPP"
     }

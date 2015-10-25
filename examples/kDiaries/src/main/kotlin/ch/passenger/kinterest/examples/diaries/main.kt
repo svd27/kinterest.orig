@@ -1,61 +1,30 @@
 package ch.passenger.kinterest.examples.diaries
 
-import ch.passenger.kinterest.Universe
-import javax.swing.JFrame
-import java.awt.BorderLayout
-import javax.swing.JScrollPane
-import javax.swing.JTable
-import ch.passenger.kinterest.util.swing.InterestTableModel
-import ch.passenger.kinterest.Interest
-import ch.passenger.kinterest.neo4j.Neo4jDbWrapper
-import org.slf4j.LoggerFactory
-import ch.passenger.kinterest.PropertyFilter
-import ch.passenger.kinterest.FilterFactory
-import org.neo4j.kernel.GraphDatabaseAPI
-import javax.swing.JPanel
-import javax.swing.Box
-import javax.swing.JTextField
-import javax.swing.JLabel
-import javax.swing.AbstractAction
-import java.awt.event.ActionEvent
-import javax.swing.JButton
-import ch.passenger.kinterest.Galaxy
-import java.util.logging.Logger
-import java.util.logging.Level
-import javax.swing.table.TableRowSorter
-import ch.passenger.kinterest.service.InterestService
-import com.fasterxml.jackson.databind.ObjectMapper
-import ch.passenger.kinterest.util.json.Jsonifier
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
-import ch.passenger.kinterest.SortKey
-import ch.passenger.kinterest.SortDirection
-import java.util.ArrayList
-import ch.passenger.kinterest.oppositeSortDirection
-import javax.swing.JFormattedTextField
-import java.awt.event.FocusAdapter
-import java.awt.event.FocusEvent
-import ch.passenger.kinterest.service.KIApplication
+import ch.passenger.kinterest.*
 import ch.passenger.kinterest.jetty.*
-import ch.passenger.kinterest.service.SimpleServiceDescriptor
-import ch.passenger.kinterest.service.KISession
-import ch.passenger.kinterest.service.KIPrincipal
-import rx.plugins.RxJavaErrorHandler
-import ch.passenger.kinterest.entityName
-import ch.passenger.kinterest.style.styleApplication
+import ch.passenger.kinterest.neo4j.Neo4jDbWrapper
+import ch.passenger.kinterest.service.InterestService
+import ch.passenger.kinterest.service.KIApplication
 import ch.passenger.kinterest.service.ServiceDescriptor
+import ch.passenger.kinterest.service.SimpleServiceDescriptor
 import ch.passenger.kinterest.style.styleServices
-import org.neo4j.server.configuration.ServerConfigurator
-import org.neo4j.server.configuration.Configurator
-import org.eclipse.jetty.util.ssl.SslContextFactory
-import org.eclipse.jetty.server.HttpConfiguration
-import org.eclipse.jetty.server.SecureRequestCustomizer
-import org.eclipse.jetty.server.SslConnectionFactory
-import org.eclipse.jetty.server.ServerConnector
-import org.eclipse.jetty.server.HttpConnectionFactory
-import java.io.File
-import com.fasterxml.jackson.databind.node.ObjectNode
+import ch.passenger.kinterest.util.swing.InterestTableModel
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.eclipse.jetty.server.*
+import org.eclipse.jetty.util.ssl.SslContextFactory
+import org.neo4j.kernel.GraphDatabaseAPI
+import org.neo4j.server.configuration.Configurator
+import org.neo4j.server.configuration.ServerConfigurator
+import org.slf4j.LoggerFactory
+import rx.plugins.RxJavaErrorHandler
+import java.awt.BorderLayout
+import java.awt.event.*
+import java.io.File
+import java.util.*
+import java.util.logging.Level
+import java.util.logging.Logger
+import javax.swing.*
 
 
 /**
@@ -116,7 +85,7 @@ Logger.getLogger("").getHandlers().forEach {
     srv.start()
 
     val neojDbWrapper = Neo4jDbWrapper(db)
-    boostrapDomain(neojDbWrapper)
+    //boostrapDomain(neojDbWrapper)
 
     val services : Iterable<ServiceDescriptor<*>> = listOf(
             SimpleServiceDescriptor(javaClass<InterestService<DiaryOwner,Long>>()) {
@@ -149,7 +118,7 @@ Logger.getLogger("").getHandlers().forEach {
 
     jetty {
         connectors {
-            array(serverConnector {
+            arrayOf(serverConnector {
                 setPort(port)
             })
         }
@@ -215,9 +184,9 @@ class UserFrame(val users:InterestService<DiaryOwner,Long>) {
                         if(ain.orderBy.size==1 && ain.orderBy[0]?.property==col.property) {
                             val sortDirection = ain.orderBy[0].direction
                             val nk = SortKey(col.property, if(sortDirection==SortDirection.ASC) SortDirection.DESC else SortDirection.ASC)
-                            ain.orderBy = array(nk)
+                            ain.orderBy = arrayOf(nk)
                         } else {
-                            ain.orderBy = array(SortKey(col.property, SortDirection.ASC))
+                            ain.orderBy = arrayOf(SortKey(col.property, SortDirection.ASC))
                         }
                     } else {
                         log.info("additive sort ${col.property}")

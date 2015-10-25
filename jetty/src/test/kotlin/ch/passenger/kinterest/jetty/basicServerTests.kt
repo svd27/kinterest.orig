@@ -1,14 +1,13 @@
 package ch.passenger.kinterest.jetty
 
+import org.eclipse.jetty.client.HttpClient
+import org.eclipse.jetty.server.Request
+import org.eclipse.jetty.server.handler.AbstractHandler
 import org.junit.Test
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import org.eclipse.jetty.server.Connector
-import org.eclipse.jetty.server.handler.AbstractHandler
-import org.eclipse.jetty.server.Request
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
-import org.eclipse.jetty.client.HttpClient
 
 /**
  * Created by svd on 10/12/13.
@@ -20,11 +19,11 @@ class ServerTests {
     private val log : Logger = LoggerFactory.getLogger(javaClass<ServerTests>())!!;
     val expect = "Hello World!"
 
-    Test
+    @Test
     fun testHelloWorld() {
         val server = jetty {
             connectors {
-                array(serverConnector {
+                arrayOf(serverConnector {
                     setPort(3333)
                 })
             }

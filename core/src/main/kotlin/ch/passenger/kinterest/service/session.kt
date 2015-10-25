@@ -1,31 +1,18 @@
 package ch.passenger.kinterest.service
 
-import java.security.Principal
-import ch.passenger.kinterest.DomainObjectDescriptor
-import java.util.HashMap
-import ch.passenger.kinterest.LivingElement
-import ch.passenger.kinterest.Galaxy
-import ch.passenger.kinterest.ElementFilter
-import ch.passenger.kinterest.Interest
-import rx.Observable
-import com.fasterxml.jackson.databind.node.ObjectNode
-import ch.passenger.kinterest.util.json.Jsonifier
-import org.slf4j.LoggerFactory
-import ch.passenger.kinterest.FilterRelations
-import ch.passenger.kinterest.StaticFilter
-import ch.passenger.kinterest.Event
-import java.util.HashSet
-import rx.Subscription
-import java.util.concurrent.Executors
-import java.util.concurrent.ExecutorService
-import com.fasterxml.jackson.databind.node.ArrayNode
-import ch.passenger.kinterest.SortKey
-import ch.passenger.kinterest.SortDirection
+import ch.passenger.kinterest.*
 import ch.passenger.kinterest.util.EntityList
-import ch.passenger.kinterest.Universe
-import rx.Observer
-import ch.passenger.kinterest.exposeds
+import ch.passenger.kinterest.util.json.Jsonifier
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.ObjectNode
+import org.slf4j.LoggerFactory
+import rx.Observer
+import rx.Subscription
+import java.security.Principal
+import java.util.*
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Created by svd on 18/12/13.
@@ -43,7 +30,7 @@ public open class KIPrincipal(val principal: String, val token: String) : Princi
     }
     override fun hashCode(): Int = token.hashCode()
 
-    class object {
+    companion  object {
         val ANONYMOUS = KIPrincipal("guest", "")
     }
 }
@@ -56,16 +43,16 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     val subjects : MutableMap<Int,Subscription> = HashMap()
     var events : EventPublisher? = null
     set(v) {
-        if($events==null && v!=null) {
+        if(field ==null && v!=null) {
             interests.values().forEach {
                 val subscription = it.observable.subscribe{if(it is Event<*>) events?.publish(listOf(it as Event<Comparable<Any>>))}!!
                 subjects[it.id] = subscription
             }
-        } else if($events!=null&&v==null) {
+        } else if(field !=null&&v==null) {
             subjects.values().forEach { it.unsubscribe() }
             subjects.clear()
         }
-        $events = v
+        field = v
     }
     var entities : EntityPublisher? = null
 
@@ -88,7 +75,7 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
         })!!
     }
     fun removeInterest(i:Interest<*,*>) {
-        interests.remove(i)
+        interests.remove(i.id)
         subjects[i.id]?.unsubscribe()
     }
 
@@ -104,7 +91,7 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     }
 
 
-    class object {
+    companion  object {
         private val log = LoggerFactory.getLogger("KISession")!!
         private var nid = 0
         fun nid() = ++nid
@@ -135,13 +122,14 @@ object TicketBooth {
 }
 
 enum class RequestState {
-    STARTED SUCCEEDED FAILED
+    STARTED, SUCCEEDED, FAILED
 }
 
 open class KIServiceRequest<T>() {
     public val ticket : Int = TicketBooth.book()
     public var state : RequestState = RequestState.STARTED
-      protected set(v) {$state=v}
+      protected set(v) {
+          field =v}
     protected var result : T? = null
     protected var error : Exception? = null
     public fun result() : T {
@@ -157,7 +145,7 @@ open class KIServiceRequest<T>() {
 
 public open class KIService(name: String) {
     public val id: Int = ni()
-    class object {
+    companion  object {
         private var ni: Int = 0
         private fun ni() = ++ni
     }
@@ -191,7 +179,7 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
     public fun orderBy(id:Int, order:ArrayNode) {
         galaxy.withInterestDo(id) {
             log.info("$order")
-            it.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.copyToArray()
+            it.orderBy = order.map { SortKey(it.get("property")!!.textValue()!!, SortDirection.valueOf(it.get("direction")!!.textValue()!!)) }.toTypedArray()
         }
 
     }
@@ -267,11 +255,11 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         val om = ObjectMapper()
         val a = galaxy.sourceType.exposeds().filter {
             it.name==action
-        }.first!!
+        }.first()!!
         val mpars = a.method.getParameterTypes()!!
         val args = Array<Any?>(mpars.size) {null}
-        mpars.withIndices().forEach {
-             args[it.first] = om.treeToValue<Object?>(pars[it.first], it.second as Class<Object?>)
+        mpars.forEachIndexed { idx,cl ->
+             args[idx] = om.treeToValue<Object?>(pars[idx], cl as Class<Object?>)
         }
         log.info("invoking ${a.name}:${a.method.getReturnType()} with ${args}")
         return a.method.invoke(galaxy.get(eid), *args)
@@ -279,10 +267,10 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
 }
 
 
-public trait EventPublisher {
+public interface EventPublisher {
     fun publish(events: Iterable<Event<Comparable<Any>>>)
 }
 
-public trait EntityPublisher {
+public interface EntityPublisher {
     fun publish(entities: Iterable<LivingElement<Comparable<Any>>>)
 }

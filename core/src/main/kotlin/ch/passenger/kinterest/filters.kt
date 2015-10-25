@@ -1,32 +1,34 @@
 package ch.passenger.kinterest
 
-import java.lang.reflect.Method
-import javax.persistence.Entity
-import java.util.regex.Pattern
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.JsonNode
-import java.util.concurrent.TimeUnit
+import ch.passenger.kinterest.util.firstThat
 import ch.passenger.kinterest.util.json.EnumDecoder
-import java.util.Date
+import ch.passenger.kinterest.util.json.Jsonifier
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
+import org.slf4j.LoggerFactory
+import java.lang.reflect.Method
 import java.text.DateFormat
 import java.text.SimpleDateFormat
-import ch.passenger.kinterest.util.firstThat
-import ch.passenger.kinterest.util.json.Jsonifier
+import java.util.*
+import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
+import javax.persistence.Entity
+
 
 /**
  * Created by svd on 14/12/13.
  */
-trait ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
+interface ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
     public fun accept(element:T) : Boolean
     val relation : FilterRelations
     val target : Class<T>
 
     val kind :String
 
-    protected fun kind() : String  {
+    fun kind() : String  {
         //log.info("ann: ${target.getAnnotation(javaClass<Entity>())?.name()}")
-        val ann = target.getAnnotation(javaClass<Entity>())?.name()
+        val ann = target.getAnnotation(javaClass<Entity>())?.name
         if(ann!=null&&ann.trim().length()>0) return ann
         return target.getName()
     }
@@ -34,7 +36,7 @@ trait ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
     fun toJson() : ObjectNode
 }
 
-trait CombinationFilter<T:LivingElement<U>,U:Comparable<U>> : ElementFilter<T,U> {
+interface CombinationFilter<T:LivingElement<U>,U:Comparable<U>> : ElementFilter<T,U> {
    val combination : Iterable<ElementFilter<T,U>>
 
     override fun toJson(): ObjectNode {
@@ -51,9 +53,10 @@ trait CombinationFilter<T:LivingElement<U>,U:Comparable<U>> : ElementFilter<T,U>
 }
 
 
-public enum class FilterRelations {EQ NEQ NOT AND OR LT GT LTE GTE IN LIKE NOTLIKE STATIC FROM TO}
+public enum class FilterRelations {EQ, NEQ, NOT, AND, OR, LT, GT, LTE, GTE, IN, LIKE, NOTLIKE, STATIC, FROM, TO}
 
 abstract class PropertyFilter<T,U:Comparable<U>,V:Comparable<V>>(override val target:Class<T>, val property:String, val value:V) : ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
+    val log = LoggerFactory.getLogger(PropertyFilter::class.java)
     private var method : Method? = null;
     private var _kind :String?= null
     override val kind : String get() {
@@ -133,7 +136,7 @@ abstract class PropertyFilter<T,U:Comparable<U>,V:Comparable<V>>(override val ta
         json["value"] = om.valueToTree(value)
         return json
     }
-    class object {
+    companion object {
         val dates : DateFormat = SimpleDateFormat("yyyyMMddHHmmssSSS")
         public fun eq<T:LivingElement<U>,U:Comparable<U>,V:Comparable<V>>(target:Class<T>,p:String, value:V) : PropertyFilter<T,U,V> = EQ(target, p, value)
     }
@@ -148,7 +151,7 @@ abstract class RelationFilter<T:LivingElement<U>,U:Comparable<U>>(val property:S
 class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<T>, val descriptor:DomainObjectDescriptor) where T : LivingElement<U> {
     fun<V:Comparable<V>> neq(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.NEQ) {
-            (e,v) -> if(v==null) false else e.compareTo(v!! as V) != 0
+            e,v -> if(v==null) false else e.compareTo(v!! as V) != 0
         }
     }
     fun<V:Comparable<V>> eq(property:String, value:V) : PropertyFilter<T,U,V> {
@@ -157,25 +160,25 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
 
     fun<V:Comparable<V>> lt(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.LT) {
-            (e,v) -> e<(v as V)
+            e,v -> e<(v as V)
         }
     }
 
     fun<V:Comparable<V>> gt(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.GT) {
-            (e,v) -> e>(v as V)
+            e,v -> e>(v as V)
         }
     }
 
     fun<V:Comparable<V>> lte(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.LTE) {
-            (e,v) -> e<=(v as V)
+            e,v -> e<=(v as V)
         }
     }
 
     fun<V:Comparable<V>> gte(property:String, value:V) : PropertyFilter<T,U,V> {
         return binrel<V>(property, value, FilterRelations.GTE) {
-            (e,v) -> e.compareTo((v as V)) >= 0
+            e,v -> e.compareTo((v as V)) >= 0
         }
     }
 
@@ -210,13 +213,13 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
 
     fun and(vararg f:ElementFilter<T,U>) : ElementFilter<T,U> {
         return binop(FilterRelations.AND, f.toList()) {
-            (e,fl) -> fl.all { it.accept(e) }
+            e,fl -> fl.all { it.accept(e) }
         }
     }
 
     fun or(vararg f:ElementFilter<T,U>) : ElementFilter<T,U> {
         return binop(FilterRelations.OR, f.toList()) {
-            (e,fl) -> fl.any { it.accept(e) }
+            e,fl -> fl.any { it.accept(e) }
         }
     }
 
@@ -257,7 +260,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
                 var tf = filter as ElementFilter<LivingElement<Comparable<Any>>, Comparable<Any>>
                 val bf = eq<Comparable<Any>>("id", element.id() as Comparable<Any>) as ElementFilter<LivingElement<out Comparable<Any>>,out Comparable<Any>>
                 tf = ff.and(ff.to(sp, bf) , tf)
-                val res = tg.filter(tf, array(), 0, 1).timeout(1000, TimeUnit.MILLISECONDS)!!.toBlockingObservable()!!.toFuture()!!.get()
+                val res = tg.filter(tf, arrayOf(), 0, 1).timeout(1000, TimeUnit.MILLISECONDS)!!.toBlockingObservable()!!.toFuture()!!.get()
                 return res != null
             }
             override val relation: FilterRelations = FilterRelations.FROM
@@ -298,6 +301,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
 
 
     fun staticFilter(i:Interest<T,U>) : ElementFilter<T,U> = StaticFilter(i)
+    val log = LoggerFactory.getLogger("ch.passenger.kinterest")
 
     fun fromJson(json:ObjectNode) : ElementFilter<T,U> {
         val om = ObjectMapper()
@@ -335,12 +339,12 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
             }
             FilterRelations.AND -> {
                 val operands = json["operands"]!!
-                val oa = operands.map { fromJson(it as ObjectNode) }.copyToArray()
+                val oa = operands.map { fromJson(it as ObjectNode) }.toTypedArray()
                 and(*oa)
             }
             FilterRelations.OR -> {
                 val operands = json["operands"]!!
-                val oa = operands.map { fromJson(it as ObjectNode) }.copyToArray()
+                val oa = operands.map { fromJson(it as ObjectNode) }.toTypedArray()
                 or(*oa)
             }
             FilterRelations.NOT -> {
@@ -401,7 +405,7 @@ class StaticFilter<T:LivingElement<U>,U:Comparable<U>>(private val interest:Inte
     }
 }
 
-enum class SortDirection { ASC DESC }
+enum class SortDirection { ASC, DESC }
 fun oppositeSortDirection(dir:SortDirection):SortDirection{
     if(dir==SortDirection.ASC) return SortDirection.DESC else return SortDirection.ASC
 }
