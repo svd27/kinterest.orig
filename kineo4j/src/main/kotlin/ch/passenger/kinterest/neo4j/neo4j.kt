@@ -167,7 +167,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
                         val stats = res!!.getQueryStatistics()
                         log.info("stats: ${stats}")
-                        res.forEach {
+                        res.iterator().forEach {
                             val id = it["ID"]
                             if (id != null)
                                 obs?.onNext(id as U?)

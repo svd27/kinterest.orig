@@ -76,7 +76,8 @@ Logger.getLogger("").getHandlers().forEach {
             e?.printStackTrace()
         }
     })
-    val db = org.neo4j.graphdb.factory.GraphDatabaseFactory().newEmbeddedDatabase("./neo/data")
+
+    val db = org.neo4j.graphdb.factory.GraphDatabaseFactory().newEmbeddedDatabase(File("./neo/data"))
     val api : GraphDatabaseAPI = db as GraphDatabaseAPI
     val cfg = ServerConfigurator(api)
     cfg.configuration()!!.setProperty(Configurator.WEBSERVER_ADDRESS_PROPERTY_KEY, "0.0.0.0")
@@ -85,7 +86,7 @@ Logger.getLogger("").getHandlers().forEach {
     srv.start()
 
     val neojDbWrapper = Neo4jDbWrapper(db)
-    //boostrapDomain(neojDbWrapper)
+    boostrapDomain(neojDbWrapper)
 
     val services : Iterable<ServiceDescriptor<*>> = listOf(
             SimpleServiceDescriptor(javaClass<InterestService<DiaryOwner,Long>>()) {

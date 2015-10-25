@@ -13,7 +13,7 @@ public fun styleApplication(db:Neo4jDbWrapper) : KIApplication {
 }
 
 public fun styleServices(db:Neo4jDbWrapper) : List<ServiceDescriptor<out KIService>> {
-    //boostrapDomain(db)
+    boostrapDomain(db)
     return listOf(
             SimpleServiceDescriptor(javaClass<InterestService<CSSStylesheet, Long>>()) {
                 InterestService(Universe.galaxy(javaClass<CSSStylesheet>().entityName())!!)

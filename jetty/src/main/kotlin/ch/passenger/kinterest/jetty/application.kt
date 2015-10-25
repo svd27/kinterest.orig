@@ -123,14 +123,14 @@ class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
                 log.info(">>>>>>>>>>>>>>>>ADDING: ${s.galaxy.descriptor.entity} on $path")
                 ctx + (path to (ServletHolder(InterestServlet(s, app))))
             }
-            ctx.socket {
-                "/${app.name}/events" to javaClass<EventSocket>() as Class<KIWebsocketAdapter>
-            }
+        }
+        ctx.socket {
+            "/${app.name}/events" to javaClass<EventSocket>() as Class<KIWebsocketAdapter>
+        }
 
-            ctx.socket {
+        ctx.socket {
 
-                "/${app.name}/entities" to javaClass<EntitySocket>() as Class<KIWebsocketAdapter>
-            }
+            "/${app.name}/entities" to javaClass<EntitySocket>() as Class<KIWebsocketAdapter>
         }
     }
 

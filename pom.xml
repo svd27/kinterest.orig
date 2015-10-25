@@ -12,10 +12,10 @@
 
     <properties>
         <kotlin.version>1.0.0-beta-1038</kotlin.version>
-        <jetty.version>9.0.5.v20130815</jetty.version>
+        <jetty.version>9.3.5.v20151012</jetty.version>
         <junit.version>4.10</junit.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <neo4j.version>2.1.5</neo4j.version>
+        <neo4j.version>2.3.0</neo4j.version>
         <version.derby>10.10.1.1</version.derby>
     </properties>
 
