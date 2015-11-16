@@ -61,7 +61,7 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
 
 
     override fun onWebSocketConnect(sess: Session?) {
-        super<KIWebsocketAdapter>.onWebSocketConnect(sess)
+        super.onWebSocketConnect(sess)
         log.info("WS CONNECT: $sess")
         kisession.events = this@EventSocket
     }
@@ -70,16 +70,16 @@ class EventSocket(val http: HttpSession) : KIWebsocketAdapter(http), EventPublis
         val ja: ArrayNode = om.createArrayNode()!!
         events.forEach {
             val an: ArrayNode = ja
-            an.add(Jsonifier.jsonify<Comparable<Any>>(it as Event<Comparable<Any>>))
+            an.add(Jsonifier.jsonify(it))
         }
-        send(ja.toString()!!)
+        send(ja.toString())
     }
 }
 
 
 class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPublisher {
     private val log = LoggerFactory.getLogger(EntitySocket::class.java)
-    val kisession: KISession get() = http!!.getAttribute(KIServlet.SESSION_KEY) as KISession
+    val kisession: KISession get() = http.getAttribute(KIServlet.SESSION_KEY) as KISession
     val om = ObjectMapper()
     override fun onWebSocketText(message: String?) {
         log.debug(message)
@@ -105,7 +105,7 @@ class EntitySocket(val http: HttpSession) : KIWebsocketAdapter(http), EntityPubl
 
 
         log.info("publish $ja")
-        getSession()?.getRemote()?.sendStringByFuture(ja!!.toString())
+        getSession()?.remote?.sendStringByFuture(ja.toString())
     }
 }
 
@@ -137,7 +137,7 @@ class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
     override fun doGet(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
         if (resp == null) throw IllegalStateException()
-        resp.setContentType("application/json")
+        resp.contentType = "application/json"
         val on = om.createObjectNode()!!
         on.put("application", app.name)
         on.put("session", KISession.current()?.id)
@@ -158,7 +158,7 @@ class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
                     val ann = pd.classOf.getAnnotation(javaClass<Entity>())
                     pn.put("entity", ann?.name)
                 } else {
-                    pn.put("type", pd.getter.getReturnType()?.getName())
+                    pn.put("type", pd.getter.returnType?.name)
                 }
 
                 pn.put("nullable", dd.nullable(p))

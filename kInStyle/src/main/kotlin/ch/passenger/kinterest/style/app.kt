@@ -15,14 +15,14 @@ public fun styleApplication(db:Neo4jDbWrapper) : KIApplication {
 public fun styleServices(db:Neo4jDbWrapper) : List<ServiceDescriptor<out KIService>> {
     boostrapDomain(db)
     return listOf(
-            SimpleServiceDescriptor(javaClass<InterestService<CSSStylesheet, Long>>()) {
-                InterestService(Universe.galaxy(javaClass<CSSStylesheet>().entityName())!!)
+            SimpleServiceDescriptor(InterestService::class.java) {
+                InterestService<CSSStylesheet,Long>(Universe.galaxy(CSSStylesheet::class.java.entityName())!!)
             },
-            SimpleServiceDescriptor(javaClass<InterestService<CSSStyleRule, Long>>()) {
-                InterestService(Universe.galaxy(javaClass<CSSStyleRule>().entityName())!!)
+            SimpleServiceDescriptor(InterestService::class.java) {
+                InterestService<CSSStyleRule,Long>(Universe.galaxy(CSSStyleRule::class.java.entityName())!!)
             },
-            SimpleServiceDescriptor(javaClass<InterestService<CSSProperty, Long>>()) {
-                InterestService(Universe.galaxy(javaClass<CSSProperty>().entityName())!!)
+            SimpleServiceDescriptor(InterestService::class.java) {
+                InterestService<CSSProperty,Long>(Universe.galaxy(CSSProperty::class.java.entityName())!!)
             }
     )
 }

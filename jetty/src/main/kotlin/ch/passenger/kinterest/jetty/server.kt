@@ -46,7 +46,7 @@ fun ServletContextHandler.servlets(cfg : ServletContextHandler.() -> Map<String,
     cfg().entrySet().forEach { addServlet(it.value, it.key) }
 }
 
-fun ServletContextHandler.plus(p:Pair<String,ServletHolder>) {
+operator fun ServletContextHandler.plus(p:Pair<String,ServletHolder>) {
     addServlet(p.second, p.first)
 }
 
