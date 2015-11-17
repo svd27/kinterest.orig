@@ -1,45 +1,24 @@
 package ch.passenger.kinterest
 
-import rx.Observable
-import java.util.HashMap
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import java.util.ArrayList
-import java.util.concurrent.ExecutorService
-import rx.Observer
-import rx.Observable.OnSubscribeFunc
-import rx.Subscription
+import ch.passenger.kinterest.annotations.Expose
+import ch.passenger.kinterest.annotations.Index
+import ch.passenger.kinterest.annotations.Label
+import ch.passenger.kinterest.annotations.Unique
+import ch.passenger.kinterest.service.EntityPublisher
+import ch.passenger.kinterest.util.json.EnumDecoder
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.util.HashSet
-import java.lang.reflect.Method
-import javax.persistence.Entity
-import java.util.WeakHashMap
-import kotlin.properties.Delegates
+import rx.Observable
+import rx.Observer
 import rx.subjects.PublishSubject
-import java.util.Comparator
-import javax.persistence.Transient
-import javax.persistence.OneToOne
-import org.jetbrains.annotations.Nullable
-import javax.persistence.Id
-import javax.persistence.UniqueConstraint
-import ch.passenger.kinterest.annotations.Index
-import ch.passenger.kinterest.util.filter
+import java.lang.reflect.Method
 import java.lang.reflect.Modifier
-import ch.passenger.kinterest.service.EntityPublisher
-import java.util.concurrent.BlockingDeque
-import java.util.concurrent.LinkedBlockingDeque
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import javax.persistence.OneToMany
-import java.util.Date
 import java.text.SimpleDateFormat
-import ch.passenger.kinterest.util.json.EnumDecoder
-import ch.passenger.kinterest.annotations.Label
-import javax.persistence.ManyToOne
-import ch.passenger.kinterest.util.EntityList
-import java.util.AbstractList
-import ch.passenger.kinterest.annotations.Expose
+import java.util.*
+import java.util.concurrent.*
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import javax.persistence.*
+
 
 /**
  * Created by svd on 11/12/13.
@@ -50,16 +29,17 @@ private val log: Logger = LoggerFactory.getLogger("ch.passenger.kinterest.core")
 //}
 
 
-trait LivingElement<T:Comparable<T>> : Comparable<LivingElement<T>>  {
-    Id
+interface LivingElement<T:Comparable<T>> : Comparable<LivingElement<T>>  {
+    @Id
     public fun id(): T
     public fun consume(evt: UpdateEvent<T, Any?>) {
         subject.onNext(evt)
     }
-    protected fun subject(): PublishSubject<UpdateEvent<T, Any?>> = PublishSubject.create<UpdateEvent<T, Any?>>()!!
 
-    protected val subject: PublishSubject<UpdateEvent<T, Any?>> [Transient] get
-    val observable: Observable<UpdateEvent<T, Any?>> [Transient] get() = subject
+    fun subject(): PublishSubject<UpdateEvent<T, Any?>> = PublishSubject.create<UpdateEvent<T, Any?>>()!!
+
+    val subject: PublishSubject<UpdateEvent<T, Any?>> @Transient get
+    val observable: Observable<UpdateEvent<T, Any?>> @Transient get() = subject
     fun galaxy(): Galaxy<out LivingElement<T>, out T>
     fun descriptor(): DomainObjectDescriptor
     override fun compareTo(other: LivingElement<T>): Int = id().compareTo(other.id())
@@ -70,7 +50,7 @@ trait LivingElement<T:Comparable<T>> : Comparable<LivingElement<T>>  {
 
 
 public enum class EventTypes {
-    CREATE ADD DELETE REMOVE UPDATE ORDER INTEREST
+    CREATE, ADD, DELETE, REMOVE, UPDATE, ORDER, INTEREST
 }
 
 open class Event<U : Comparable<U>>(public val sourceType: String, public val kind: EventTypes)
@@ -90,7 +70,7 @@ class OrderEvent<U : Comparable<U>>(val interest: Int, sourceType: String, val o
 class InterestConfigEvent<U:Comparable<U>>(sourceType:String, val interest:Int, val currentsize:Int, val estimated:Int, val offset:Int, val limit:Int, val orderBy:Array<SortKey>) : Event<U>(sourceType, EventTypes.INTEREST)
 
 
-trait DataStore<T : Event<U>, U : Comparable<U>> {
+interface  DataStore<T : Event<U>, U : Comparable<U>> {
     val observable: Observable<T>
     fun<T : LivingElement<U>> filter(f: ElementFilter<T, U>, orderBy: Array<SortKey>, offset: Int, limit: Int): Observable<U>
     /**
@@ -118,7 +98,7 @@ trait DataStore<T : Event<U>, U : Comparable<U>> {
     open public fun<T> atomic(work: ()->T) : T
 }
 
-trait DomainObject {
+interface DomainObject {
     fun get(p: String, pd:DomainPropertyDescriptor): Any?
     fun set(p: String, pd:DomainPropertyDescriptor, value: Any?): Unit
 }
@@ -133,11 +113,11 @@ class DomainObjectDescriptor(val cls: Class<*>) {
     }.map { it.propertyName() }
     private val getters: MutableMap<String, Method> = HashMap()
     private val setters: MutableMap<String, Method> = HashMap();
-    {
+    init {
         cls.getMethods().filter {
             !Modifier.isStatic(it.getModifiers()) && !Modifier.isPrivate(it.getModifiers())
             && !it.transient() && (it.getName()!!.startsWith("get") || it.getName()!!.startsWith("is")) && it.getReturnType() != javaClass<Void>()
-            && it.getParameterTypes()?.size?:1 == 0 && it.getAnnotation(javaClass<Expose>()) == null
+            && it.getParameterTypes()?.size?:1 == 0 && it.getAnnotation(Expose::class.java) == null
         }.forEach {
             getters[it.propertyName()] = it
         }
@@ -149,15 +129,15 @@ class DomainObjectDescriptor(val cls: Class<*>) {
         }
     }
 
-    public val identifier :Method = cls.getMethods().filter { it.getAnnotation(javaClass<Id>()) != null }.first!!
+    public val identifier :Method = cls.getMethods().filter { it.getAnnotation(javaClass<Id>()) != null }.first()!!
 
     public val properties: Iterable<String> = getters.keySet()
 
-    public fun nullable(p:String) : Boolean = ch.passenger.kinterest.Universe.galaxy<LivingElement<Comparable<Any>>,Comparable<Any>>(cls.entityName())!!.nullables.containsItem(p)
+    public fun nullable(p:String) : Boolean = ch.passenger.kinterest.Universe.galaxy<LivingElement<Comparable<Any>>,Comparable<Any>>(cls.entityName())!!.nullables.contains(p)
 
     public val descriptors: Map<String, DomainPropertyDescriptor>
 
-    {
+    init {
         val m: MutableMap<String, DomainPropertyDescriptor> = HashMap()
         getters.entrySet().forEach {
             val setter = setters[it.key]
@@ -173,10 +153,10 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
     val enum : Boolean = getter.getReturnType()!!.isEnum()
     val nullable : Boolean get() = chknull()
     val oneToMany : Boolean get() = getter.oneToMany()
-    val classOf: Class<*> = if(oneToMany) getter.getAnnotation(javaClass<OneToMany>())!!.targetEntity()!! else getter.getReturnType()!!
+    val classOf: Class<*> = if(oneToMany) getter.getAnnotation(OneToMany::class.java)!!.targetEntity.java else getter.getReturnType()!!
     val targetEntity : String = classOf.entityName()
-    val linkType: Class<*>?;
-    {
+    val linkType: Class<*>?
+    init {
         if (relation) {
             log.info("descriptor for: $classOf -> $relation")
             linkType = classOf.getMethod("id").getReturnType()
@@ -196,22 +176,22 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
 
     fun fromDataStore(v:Any?) : Any? {
         if(v == null) return v
-        if(classOf.isAssignableFrom(javaClass<Date>())) {
+        if(classOf.isAssignableFrom(Date::class.java)) {
             return neoDate.parse(v.toString())
         }
         if(classOf.isEnum()) {
             return EnumDecoder.decode(classOf, v as String)
         }
-        if(classOf.equals(javaClass<Int>()) && v is Number) {
+        if(classOf.equals(Int::class.java) && v is Number) {
             return v.toInt()
         }
-        if(classOf.equals(javaClass<Short>()) && v is Number) {
+        if(classOf.equals(Short::class.java) && v is Number) {
             return v.toShort()
         }
-        if(classOf.equals(javaClass<Double>()) && v is Number) {
+        if(classOf.equals(Double::class.java) && v is Number) {
             return v.toDouble()
         }
-        if(classOf.equals(javaClass<Float>()) && v is Number) {
+        if(classOf.equals(Float::class.java) && v is Number) {
             return v.toFloat()
         }
         return v
@@ -231,7 +211,7 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
         return v
     }
 
-    public fun toString() : String {
+    public override fun toString() : String {
         return "${property}: rel = ${relation} classOf: ${classOf}"
     }
 }
@@ -245,9 +225,11 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
     private val traps : MutableSet<Interest<LivingElement<Comparable<Any>>,Comparable<Any>>> = HashSet()
 
     var offset: Int = 0
-        private set(v) {$offset=v}
+        private set(v) {
+            field =v}
     var limit: Int = 0
-        private set(v) {$limit=v}
+        private set(v) {
+            field =v}
 
 
     fun buffer(off:Int, lim:Int) {
@@ -275,9 +257,9 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
 
         set(v) {
 
-            log.info("""${id}: setting order: ${v.fold("") {(v, it) -> v + it.property + "." + it.direction.name() + " " }} was ${orderBy.fold("") {(v, it) -> it.property + "." + it.direction.name() + " " }} """)
+            log.info("""${id}: setting order: ${v.fold("") {v, it -> v + it.property + "." + it.direction.name() + " " }} was ${orderBy.fold("") {v, it -> it.property + "." + it.direction.name() + " " }} """)
             if (orderBy != v) {
-                $orderBy = v
+                field = v
                 log.info("resort")
                 resort()
                 emitConfig()
@@ -285,7 +267,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
         }
     var filter: ElementFilter<T, U> = StaticFilter(this)
         set(v) {
-            $filter = v
+            field = v
             if (v !is StaticFilter) {
                 trapper(v)
                 load()
@@ -335,10 +317,10 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
         }
     }
     val sourceType: String;
-    {
-        val jc = javaClass<Entity>()
-        var ann = target.getAnnotation(jc)
-        sourceType = if (ann != null && !ann!!.name()!!.isEmpty()) ann!!.name()!! else jc.getName()
+    init {
+        val jc = Entity::class.java
+        var ann: Entity? = target.getAnnotation(jc)
+        sourceType = if (ann != null && !ann.name.isEmpty()) ann.name else jc.getName()
         load()
     }
     private val galaxy = ch.passenger.kinterest.Universe.galaxy<T,U>(target.entityName())!! as Galaxy<T,U>
@@ -424,7 +406,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
                 log.error("error on load", e)
             }
             override fun onNext(el: T?) {
-                if (el != null && !order.containsItem(el.id())) order.add(el.id())
+                if (el != null && !order.contains(el.id())) order.add(el.id())
             }
         }
         galaxy.filter(filter, orderBy, offset, if (limit > 0) limit + 1 else 0).subscribe(obs)
@@ -507,9 +489,9 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
     protected open fun resort() {
         if(limit>0&&filter.relation!=FilterRelations.STATIC) {refresh(); return}
         if(orderBy.size==0) return
-        val no = order.sort(comparator)
-        val changed = order.withIndices().fold(false) {
-            (fl, p) ->
+        val no = order.sortedWith(comparator)
+        val changed = order.mapIndexed { i, u -> i to u }.fold(false) {
+            fl, p ->
             (p.second != no[p.first]) || fl
         }
         if (changed) {
@@ -535,7 +517,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
         else {
             //provocate index out of bounds
             if(idx>=currentsize) return get(order[idx])!!
-            return galaxy.filter(filter, orderBy, idx, 1).timeout(500, TimeUnit.MILLISECONDS)!!.toBlockingObservable()!!.single()!!
+            return galaxy.filter(filter, orderBy, idx, 1).timeout(500, TimeUnit.MILLISECONDS)!!.toBlocking().single()
         }
     }
     public fun indexOf(t: U): Int = order.indexOf(t)
@@ -549,7 +531,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
         order.forEach { if(it!=null) cb(it) }
     }
 
-    class object {
+    companion  object {
         var count: Int = 0
         fun nextId() = count++
     }
@@ -571,7 +553,7 @@ object Universe {
         return galaxies.values().map { (it as Galaxy<*, *>).descriptor }
     }
 
-    public fun galaxy<T:LivingElement<U>,U:Comparable<U>>(entity:String): Galaxy<T,U>? {
+    public fun <T:LivingElement<U>,U:Comparable<U>> galaxy(entity:String): Galaxy<T,U>? {
         return galaxies[entity] as Galaxy<T,U>?
     }
 
@@ -628,7 +610,7 @@ abstract class Galaxy<T : LivingElement<U>, U : Comparable<U> >(val sourceType: 
         if(i!=null) cb(i!!)
     }
 
-    {
+    init {
         store.schema(sourceType, descriptor)
         var entity: Entity = sourceType.getAnnotation(javaClass<Entity>())!!;
         sourceType.getMethods().filter { it.getName()!!.startsWith("get")  }.forEach {
@@ -641,7 +623,7 @@ abstract class Galaxy<T : LivingElement<U>, U : Comparable<U> >(val sourceType: 
 
         }
 
-        kind = if (entity.name() == null || entity.name()?.trim()?.length() == 0) sourceType.javaClass.getName() else entity.name()!!
+        kind = if (entity.name == null || entity.name.trim().length == 0) sourceType.javaClass.getName() else entity.name
         val obs = object : rx.Observer<Event<U>> {
 
             override fun onCompleted() {
@@ -665,7 +647,7 @@ abstract class Galaxy<T : LivingElement<U>, U : Comparable<U> >(val sourceType: 
             }
         }
         store.observable.filter { log.info("!!!###$it ${it?.sourceType}"); it!=null && it.sourceType == kind }?.subscribe(obs)
-        val call = {() ->
+        val call = {
             try {
                 val drain: MutableList<Retriever<U>> = ArrayList();
                 drain.add(retrievers.take())
@@ -765,12 +747,12 @@ abstract class Galaxy<T : LivingElement<U>, U : Comparable<U> >(val sourceType: 
 
     val filterFactory: FilterFactory<T, U> = FilterFactory(this, sourceType, descriptor)
     abstract val nullables : Set<String>
-    public fun isNullable(p:String) : Boolean = nullables.containsItem(p)
+    public fun isNullable(p:String) : Boolean = nullables.contains(p)
 }
 
 fun Class<*>.entityName(): String {
-    val ann = getAnnotation(javaClass<Entity>())
-    if (ann != null && ann.name() != null && ann.name().isNotEmpty()) return ann.name()!!
+    val ann = getAnnotation(Entity::class.java)
+    if (ann != null && ann.name.isNotEmpty()) return ann.name
     return getName()
 }
 
@@ -782,24 +764,24 @@ class EntityAction(val method:Method) {
 fun Class<*>.exposeds() : List<EntityAction> {
     val res = ArrayList<EntityAction>()
     getMethods().forEach {
-        if(it.getAnnotation(javaClass<Expose>())!=null) {
+        if(it.getAnnotation(Expose::class.java)!=null) {
             res.add(EntityAction(it))
         }
     }
     return res
 }
 
-public fun Method.unique(): Boolean = getAnnotation(javaClass<UniqueConstraint>()) != null
-public fun Method.index(): Boolean = getAnnotation(javaClass<Index>()) != null
-public fun Method.transient(): Boolean = getAnnotation(javaClass<Transient>()) != null
-public fun Method.relation(): Boolean = getAnnotation(javaClass<OneToOne>()) != null
-public fun Method.relTarget(): Class<*> = getAnnotation(javaClass<OneToOne>())!!.targetEntity()!!
-public fun Method.oneToMany(): Boolean = getAnnotation(javaClass<OneToMany>()) != null
-public fun Method.label(): Boolean = getAnnotation(javaClass<Label>()) != null
+public fun Method.unique(): Boolean = getAnnotation(Unique::class.java) != null
+public fun Method.index(): Boolean = getAnnotation(Index::class.java) != null
+public fun Method.transient(): Boolean = getAnnotation(Transient::class.java) != null
+public fun Method.relation(): Boolean = getAnnotation(OneToOne::class.java) != null
+public fun Method.relTarget(): Class<*> = getAnnotation(OneToOne::class.java)!!.targetEntity.java
+public fun Method.oneToMany(): Boolean = getAnnotation(OneToMany::class.java) != null
+public fun Method.label(): Boolean = getAnnotation(Label::class.java) != null
 
 public fun Method.propertyName(): String {
     val mn = getName()!!
     if ((mn.startsWith("set") || mn.startsWith("get")) && mn.length > 3) return mn.substring(3).decapitalize()
-    if (mn.startsWith("is") && getReturnType()!!.isAssignableFrom(javaClass<Boolean>()) && mn.length > 2) return mn.substring(2).decapitalize()
+    if (mn.startsWith("is") && getReturnType()!!.isAssignableFrom(Boolean::class.java) && mn.length > 2) return mn.substring(2).decapitalize()
     return mn
 }

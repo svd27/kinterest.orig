@@ -20,18 +20,18 @@ import ch.passenger.kinterest.entityName
  */
 class DiaryJsonTests {
     var db : GraphDatabaseService? = null
-    Before
+    @Before
     fun setup() {
         Logger.getLogger("org.neo4j").setLevel(Level.FINE)
         db = TestGraphDatabaseFactory().newImpermanentDatabase()
-        boostrapDomain(Neo4jDbWrapper(db!!))
+        //boostrapDomain(Neo4jDbWrapper(db!!))
     }
 
     fun teardown() {
         db!!.shutdown()
     }
 
-    Test
+    @Test
     fun jsonify() {
         val guser = Universe.galaxy<DiaryOwner,Long>(javaClass<DiaryOwner>().entityName())!!
 

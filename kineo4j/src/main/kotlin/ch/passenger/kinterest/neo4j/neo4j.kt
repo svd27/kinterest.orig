@@ -45,6 +45,7 @@ import ch.passenger.kinterest.DataStore
 import ch.passenger.kinterest.ElementFilter
 import org.neo4j.cypher.javacompat.ExecutionEngine
 import rx.subjects.AsyncSubject
+import rx.schedulers.Schedulers
 import org.neo4j.cypher.javacompat.ExecutionResult
 import java.util.concurrent.Executors
 import ch.passenger.kinterest.CombinationFilter
@@ -55,7 +56,6 @@ import ch.passenger.kinterest.SortDirection
 import ch.passenger.kinterest.DomainObject
 import ch.passenger.kinterest.DeleteEvent
 import javax.persistence.Transient
-import ch.passenger.kinterest.LivingElement
 import ch.passenger.kinterest.util.with
 import javax.persistence.OneToOne
 import javax.persistence.OneToMany
@@ -63,7 +63,6 @@ import ch.passenger.kinterest.DomainObjectDescriptor
 import ch.passenger.kinterest.util.filter
 import org.neo4j.cypher.CypherExecutionException
 import org.neo4j.kernel.api.exceptions.schema.AlreadyIndexedException
-import rx.concurrency.ExecutorScheduler
 import java.util.Date
 import java.text.SimpleDateFormat
 import ch.passenger.kinterest.Universe
@@ -92,20 +91,20 @@ public fun<T> Transaction.use(tx: Transaction.() -> T): T {
 
 
 class Neo4jDbWrapper(val db: GraphDatabaseService) {
-    val engine: ExecutionEngine = ExecutionEngine(db)
+
 }
 
 class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : DataStore<Event<U>, U> {
     private val log = LoggerFactory.getLogger(javaClass<Neo4jDatastore<T,U>>())!!;
     private val subject: PublishSubject<Event<U>> = PublishSubject.create()!!;
-    private val engine = db.engine;
+    private val engine = db.db;
 
-    {
+    init {
         val thandler = object : TransactionEventHandler.Adapter<Node>() {
             override fun afterCommit(data: TransactionData?, state: Node?) {
                 if (data == null) return
                 data.createdNodes()?.forEach {
-                    if ((it?.hasProperty("ID"))?:false && !it?.hasProperty("KIND")?:false) {
+                    if ((it?.hasProperty("ID"))?:false && !(it?.hasProperty("KIND")?:false)) {
                         val nkind = it.getProperty("KIND")?.toString()
                         log.info("created node ${it.getId()}:$nkind")
                         if (nkind != null)
@@ -113,7 +112,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                     }
                 }
                 data.deletedNodes()?.forEach {
-                    if (it?.hasProperty("ID")?:false && !it?.hasProperty("KIND")?:false) {
+                    if (it?.hasProperty("ID")?:false && !(it?.hasProperty("KIND")?:false)) {
                         log.info("deleted node ${it.getId()}")
                         val nkind = it.getProperty("KIND")?.toString()
                         if (nkind != null)
@@ -195,7 +194,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
     private val pool = Executors.newFixedThreadPool(4)
 
     public override fun<T : LivingElement<U>> filter(f: ElementFilter<T, U>, orderBy: Array<SortKey>, offset: Int, limit: Int): Observable<U> {
-        return Observable.create<U> {
+        val sub  : Observable.OnSubscribe<U> = Observable.OnSubscribe<U> {
             obs ->
             log.info("subscribe $obs")
             val fut = pool.submit {
@@ -205,12 +204,10 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                 try {
                     tx {
                         val res = engine.execute(q.q, q.params)
-                        //success()
-                        log.info("${res!!.executionPlanDescription()}")
 
-                        val stats = res!!.getQueryStatistics()
+                        val stats = res.getQueryStatistics()
                         log.info("stats: ${stats}")
-                        res.forEach {
+                        res.iterator().forEach {
                             val id = it["ID"]
                             if (id != null)
                                 obs?.onNext(id as U?)
@@ -226,21 +223,17 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                     obs?.onCompleted()
                 }
             }
-            object : Subscription {
+        }
 
-                override fun unsubscribe() {
-                    fut.cancel(true)
-                }
-            }
-        }!!
+        return Observable.create<U>(sub)
 
     }
 
     val exec = Executors.newFixedThreadPool(8)
 
-    override val observable: Observable<Event<U>> get() = subject.observeOn(ExecutorScheduler(exec))!!;
+    override val observable: Observable<Event<U>> get() = subject.observeOn(Schedulers.from(exec))!!;
 
-    {
+    init {
         val obs = observable
         obs.doOnEach {
             log.info("produce $it")
@@ -262,25 +255,25 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         RETURN n
         """
         val res = engine.execute(q, m)!!
-        val l = res.columnAs<Node>("n")!!.toList()
+        val l = res.columnAs<Node>("n")
         log.info { "get result: ${l}" }
         l.forEach { log.info(it.dump()) }
-        if (l.size > 1)
+        if (l.asSequence().count() > 1)
             throw IllegalStateException()
 
-        return if (l.size == 1) l[0] else null
+        return if (l.asSequence().count() == 1) l.next() else null
     }
 
 
     override fun create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor) {
         val um: MutableMap<String, Any?> = HashMap()
-        values.entrySet().filter { descriptor.uniques.containsItem(it.key) }.map { it.key to it.value }.forEach { um.putAll(it) }
-        val setter = values.entrySet().filter { !descriptor.uniques.containsItem(it.key) }.map { it.key }
+        values.entrySet().filter { descriptor.uniques.contains(it.key) }.map { it.key to it.value }.forEach { um.putAll(it) }
+        val setter = values.entries.filter { !descriptor.uniques.contains(it.key) }.map { it.key }
         val kind = descriptor.entity
         tx {
-            val rels = values.keySet().filter { descriptor.descriptors[it]!!.relation }
+            val rels = values.keys.filter { descriptor.descriptors[it]!!.relation }
 
-            val inits = values.filter { !rels.contains(it.first) }.map { "${it.getKey()}: {${it.getKey()}}" }.reduce { a, b -> "$a, $b" }
+            val inits = values.entries.filter { !rels.contains(it.key) }.map { "${it.key}: {${it.value}}" }.reduce { a, b -> "$a, $b" }
             val q: String? = """
             MERGE (n:$kind {ID: {id}, KIND: "${descriptor.entity}"${if (inits.length > 0) ", " else ""} $inits})
             RETURN n
@@ -294,7 +287,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
             m["id"] = id
             log.info("execute $q $m")
             val res = engine.execute(q, m)!!
-            val l = res.columnAs<Node>("n")!!.toList()
+            val l = res.columnAs<Node>("n")!!.asSequence().toList()
             log.info { "create result: ${l}" }
             l.forEach { log.info(it.dump()) }
             if (l.size > 1) throw IllegalStateException()
@@ -334,7 +327,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                 ON MATCH SET n.seq = n.seq+1
                 RETURN n.seq as SEQ
                 """
-                val res: ExecutionResult = engine.execute(merge, mapOf())!!
+                val res = engine.execute(merge, mapOf())!!
                 val resourceIterator = res.columnAs<Long>("SEQ")!!
                 if (!resourceIterator.hasNext()) throw IllegalStateException()
                 val id = resourceIterator.next()
@@ -353,10 +346,10 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
     private fun labelForClass(el: Class<LivingElement<*>>): String {
         val ann = el.getAnnotation(javaClass<Entity>())
-        if (ann != null && ann.name().isNotEmpty()) {
-            return ann.name()!!
+        if (ann != null && ann.name.isNotEmpty()) {
+            return ann.name
         }
-        return el.getName()
+        return el.name
     }
 
 
@@ -447,7 +440,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
             val resourceIterator = res?.columnAs<Comparable<Any>>("ID")
             if(resourceIterator!=null && resourceIterator.hasNext())
-              del = resourceIterator?.iterator()?.take(1)?.next() as Comparable<Any>?
+              del = resourceIterator.asSequence().firstOrNull()
         }
         if(del!=null)
           subject.onNext(UpdateEvent(desc.entity, from, relation, null, del))
@@ -467,7 +460,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<V>("ID")!!
-            Observable.from(resourceIterator.toList())!!
+            Observable.from(resourceIterator.asSequence().toList())!!
         }
     }
 
@@ -485,7 +478,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<V>("ID")!!
-            Observable.from(resourceIterator.toList())!!
+            Observable.from(resourceIterator.asSequence().toList())!!
         }
     }
 
@@ -500,7 +493,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
         return tx {
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<Long>("N")!!
-            Observable.from(resourceIterator.toList())!!.map {it?.toInt()}!!
+            Observable.from(resourceIterator.asSequence().toList())!!.map {it.toInt()}
         }
     }
 
@@ -625,10 +618,10 @@ class Neo4jFilterFactory {
         val skip = " SKIP {skip}"
         val lim = if (limit > 0) " LIMIT {limit}" else ""
         val q = """
-        MATCH ${matches.values().makeString(", ")} WHERE ${ac}
+        MATCH ${matches.values.joinToString(", ")} WHERE ${ac}
         RETURN n.ID as ID
         ${createOrderBy(orderBy)}
-        ${skip} ${lim}
+        $skip $lim
         """
 
         log.info("convert: $f -> $q")
@@ -644,7 +637,7 @@ class Neo4jFilterFactory {
                 sb.append(" ").append(it.direction)
         }
         if (sb.length > 0)
-            return "ORDER BY ${sb}"
+            return "ORDER BY $sb"
         return ""
     }
 
@@ -665,7 +658,7 @@ class Neo4jFilterFactory {
 
         //TODO: HACK, we need a strategic solution for this
         if(f.value.javaClass.isEnum()) {
-            pars.put(pn, (f.value as Enum<*>).name())
+            pars.put(pn, (f.value as Enum<*>).name)
         }
         else pars.put(pn, f.value)
         log.info("$pars")
@@ -745,7 +738,7 @@ abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDa
         node().setProperty((if (name == "id") "ID" else name), pd.toDataStore(value))
     }
 
-    protected inline fun node(): Node = node
+    protected fun node(): Node = node
 
     public override fun get(p: String, pd:DomainPropertyDescriptor): Any? = prop(p, pd)
     public override fun set(p: String, pd:DomainPropertyDescriptor, value: Any?): Unit = prop(p, pd, value)

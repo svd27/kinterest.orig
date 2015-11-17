@@ -11,7 +11,6 @@
         <artifactId>kInterest</artifactId>
         <version>0.1-SNAPSHOT</version>
     </parent>
-    <groupId>ch.passenger.kinterest</groupId>
     <artifactId>kInStyle</artifactId>
     <version>0.1-SNAPSHOT</version>
     <packaging>jar</packaging>

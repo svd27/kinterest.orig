@@ -59,14 +59,14 @@ fun ServletContextHandler.plus(p:Pair<String,ServletHolder>) {
 fun ServletContextHandler.socket(cfg : ServletContextHandler.() -> Pair<String,Class<KIWebsocketAdapter>>) {
     val pair = cfg()
     val wsc = WebSocketCreator {
-        (req,resp) ->
+        req,resp ->
         val ctor = pair.second.getConstructor(javaClass<HttpSession>())
-        log.info("create ws ${ctor} ${req} ${req?.getSession()}")
+        logJetty.info("create ws ${ctor} ${req} ${req?.getSession()}")
         ctor.newInstance(req?.getSession()!!)
     }
     //class WSSServlet() : KIWebsocketServlet(wsc)
     val sh = ServletHolder(object : KIWebsocketServlet(wsc){})
-    log.info("WS: register $sh")
+    logJetty.info("WS: register $sh")
     addServlet(sh, pair.first)
 }
 
@@ -74,7 +74,7 @@ fun ServletContextHandler.socket(cfg : ServletContextHandler.() -> Pair<String,C
 fun ServletContextHandler.asocket(cfg : ServletContextHandler.() -> Pair<String,(HttpSession)->KIWebsocketAdapter>) {
     val pair = cfg()
     val wsc = WebSocketCreator {
-        (req,resp) ->
+        req,resp ->
         pair.second(req!!.getSession() as HttpSession)
     }
     class WSSServlet() : KIWebsocketServlet(wsc)

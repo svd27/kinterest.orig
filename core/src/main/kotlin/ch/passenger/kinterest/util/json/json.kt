@@ -130,7 +130,7 @@ public object Jsonifier {
     public fun valueMap(entityNode: ObjectNode, desc: DomainObjectDescriptor): Map<String, Any?> {
         val m: MutableMap<String, Any?> = HashMap()
         val json = entityNode.get("values")!!
-        json.fieldNames()!!.filter { it != "id" }.forEach {
+        json.fieldNames().asSequence().filter { it != "id" }.forEach {
             val pd = desc.descriptors[it]
             if(pd==null) throw IllegalArgumentException()
             if(pd.oneToMany) {
@@ -140,23 +140,23 @@ public object Jsonifier {
                 else throw IllegalArgumentException("cant set $it to null!!")
             } else if (pd.relation) {
                 when(pd.linkType) {
-                    javaClass<Long>() -> m[it] = json[it]!!.asLong()
-                    javaClass<Int>() -> m[it] = json[it]!!.asInt()
-                    javaClass<java.lang.Long>() -> m[it] = json[it]!!.asLong()
-                    javaClass<java.lang.Integer>() -> m[it] = json[it]!!.asInt()
+                    Long::class.java -> m[it] = json[it]!!.asLong()
+                    Int::class.java -> m[it] = json[it]!!.asInt()
+                    java.lang.Long::class.java -> m[it] = json[it]!!.asLong()
+                    java.lang.Integer::class.java -> m[it] = json[it]!!.asInt()
                     else -> throw IllegalArgumentException("$it: ${pd.linkType} currently not supported")
                 }
             } else {
                 when(pd.classOf) {
-                    javaClass<String>() -> m[it] = json[it]!!.textValue()
-                    javaClass<Long>() -> m[it] = json[it]!!.longValue()
-                    javaClass<Int>() -> m[it] = json[it]!!.intValue()
+                    String::class.java -> m[it] = json[it]!!.textValue()
+                    Long::class.java -> m[it] = json[it]!!.longValue()
+                    Int::class.java -> m[it] = json[it]!!.intValue()
 
-                    javaClass<Double>() -> m[it] = json[it]!!.doubleValue()
-                    javaClass<Float>() -> m[it] = json[it]!!.floatValue()
-                    javaClass<Boolean>() -> m[it] = json[it]!!.booleanValue()
-                    javaClass<Date>() -> m[it] = jsonDate.parse(json[it]!!.textValue())
-                    else -> if (pd.classOf?.isEnum()?:false) {
+                    Double::class.java -> m[it] = json[it]!!.doubleValue()
+                    Float::class.java -> m[it] = json[it]!!.floatValue()
+                    Boolean::class.java -> m[it] = json[it]!!.booleanValue()
+                    Date::class.java -> m[it] = jsonDate.parse(json[it]!!.textValue())
+                    else -> if (pd.classOf.isEnum()) {
                         m[it] = EnumDecoder.decode(pd.classOf, json[it]!!.textValue())
                     }
                 }
