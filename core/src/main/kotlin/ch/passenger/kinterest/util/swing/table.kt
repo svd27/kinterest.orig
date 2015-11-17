@@ -1,24 +1,18 @@
 package ch.passenger.kinterest.util.swing
 
-import ch.passenger.kinterest.LivingElement
 import ch.passenger.kinterest.Interest
-import javax.swing.table.AbstractTableModel
+import ch.passenger.kinterest.LivingElement
+import ch.passenger.kinterest.UpdateEvent
+import ch.passenger.kinterest.service.InterestService
+import ch.passenger.kinterest.util.json.Jsonifier
+import com.fasterxml.jackson.databind.node.ObjectNode
+import org.slf4j.LoggerFactory
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import java.util.*
 import javax.persistence.Id
-import java.util.ArrayList
-import java.util.HashMap
-import ch.passenger.kinterest.AddEvent
-import ch.passenger.kinterest.UpdateEvent
 import javax.persistence.Transient
-import org.slf4j.LoggerFactory
-import ch.passenger.kinterest.ElementEvent
-import ch.passenger.kinterest.util.json.Jsonifier
-import ch.passenger.kinterest.service.InterestService
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ObjectNode
-import java.util.Date
+import javax.swing.table.AbstractTableModel
 
 /**
  * Created by svd on 16/12/13.

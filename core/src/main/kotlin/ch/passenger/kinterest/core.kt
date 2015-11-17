@@ -3,7 +3,6 @@ package ch.passenger.kinterest
 import ch.passenger.kinterest.annotations.Expose
 import ch.passenger.kinterest.annotations.Index
 import ch.passenger.kinterest.annotations.Label
-import ch.passenger.kinterest.annotations.Unique
 import ch.passenger.kinterest.service.EntityPublisher
 import ch.passenger.kinterest.util.json.EnumDecoder
 import org.slf4j.Logger
@@ -19,12 +18,11 @@ import java.util.concurrent.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import javax.persistence.*
 
-
 /**
  * Created by svd on 11/12/13.
  */
 private val log: Logger = LoggerFactory.getLogger("ch.passenger.kinterest.core")!!
-//trait Identifiable<T : Hashable>  {
+//interface Identifiable<T : Hashable>  {
 //    public fun id() : T
 //}
 
@@ -35,7 +33,6 @@ interface LivingElement<T:Comparable<T>> : Comparable<LivingElement<T>>  {
     public fun consume(evt: UpdateEvent<T, Any?>) {
         subject.onNext(evt)
     }
-
     fun subject(): PublishSubject<UpdateEvent<T, Any?>> = PublishSubject.create<UpdateEvent<T, Any?>>()!!
 
     val subject: PublishSubject<UpdateEvent<T, Any?>> @Transient get
@@ -70,7 +67,7 @@ class OrderEvent<U : Comparable<U>>(val interest: Int, sourceType: String, val o
 class InterestConfigEvent<U:Comparable<U>>(sourceType:String, val interest:Int, val currentsize:Int, val estimated:Int, val offset:Int, val limit:Int, val orderBy:Array<SortKey>) : Event<U>(sourceType, EventTypes.INTEREST)
 
 
-interface  DataStore<T : Event<U>, U : Comparable<U>> {
+interface DataStore<T : Event<U>, U : Comparable<U>> {
     val observable: Observable<T>
     fun<T : LivingElement<U>> filter(f: ElementFilter<T, U>, orderBy: Array<SortKey>, offset: Int, limit: Int): Observable<U>
     /**
@@ -119,17 +116,17 @@ class DomainObjectDescriptor(val cls: Class<*>) {
             && !it.transient() && (it.getName()!!.startsWith("get") || it.getName()!!.startsWith("is")) && it.getReturnType() != javaClass<Void>()
             && it.getParameterTypes()?.size?:1 == 0 && it.getAnnotation(Expose::class.java) == null
         }.forEach {
-            getters[it.propertyName()] = it
+            getters.put(it.propertyName(), it)
         }
         cls.getMethods().filter {
             !Modifier.isStatic(it.getModifiers()) && !Modifier.isPrivate(it.getModifiers())
             && !it.transient() && it.getName()!!.startsWith("set") && it.getReturnType() != javaClass<Void>()
         }.forEach {
-            setters[it.propertyName()] = it
+            setters.put(it.propertyName(), it)
         }
     }
 
-    public val identifier :Method = cls.getMethods().filter { it.getAnnotation(javaClass<Id>()) != null }.first()!!
+    public val identifier :Method = cls.getMethods().filter { it.getAnnotation(javaClass<Id>()) != null }.first()
 
     public val properties: Iterable<String> = getters.keySet()
 
@@ -153,9 +150,9 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
     val enum : Boolean = getter.getReturnType()!!.isEnum()
     val nullable : Boolean get() = chknull()
     val oneToMany : Boolean get() = getter.oneToMany()
-    val classOf: Class<*> = if(oneToMany) getter.getAnnotation(OneToMany::class.java)!!.targetEntity.java else getter.getReturnType()!!
+    val classOf: Class<*> = if(oneToMany) getter.getAnnotation(javaClass<OneToMany>())!!.targetEntity.java else getter.getReturnType()!!
     val targetEntity : String = classOf.entityName()
-    val linkType: Class<*>?
+    val linkType: Class<*>?;
     init {
         if (relation) {
             log.info("descriptor for: $classOf -> $relation")
@@ -176,22 +173,22 @@ class DomainPropertyDescriptor(val property: String, val getter: Method, val set
 
     fun fromDataStore(v:Any?) : Any? {
         if(v == null) return v
-        if(classOf.isAssignableFrom(Date::class.java)) {
+        if(classOf.isAssignableFrom(javaClass<Date>())) {
             return neoDate.parse(v.toString())
         }
         if(classOf.isEnum()) {
             return EnumDecoder.decode(classOf, v as String)
         }
-        if(classOf.equals(Int::class.java) && v is Number) {
+        if(classOf.equals(javaClass<Int>()) && v is Number) {
             return v.toInt()
         }
-        if(classOf.equals(Short::class.java) && v is Number) {
+        if(classOf.equals(javaClass<Short>()) && v is Number) {
             return v.toShort()
         }
-        if(classOf.equals(Double::class.java) && v is Number) {
+        if(classOf.equals(javaClass<Double>()) && v is Number) {
             return v.toDouble()
         }
-        if(classOf.equals(Float::class.java) && v is Number) {
+        if(classOf.equals(javaClass<Float>()) && v is Number) {
             return v.toFloat()
         }
         return v
@@ -225,11 +222,9 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
     private val traps : MutableSet<Interest<LivingElement<Comparable<Any>>,Comparable<Any>>> = HashSet()
 
     var offset: Int = 0
-        private set(v) {
-            field =v}
+        private set(v) {field =v}
     var limit: Int = 0
-        private set(v) {
-            field =v}
+        private set(v) {field =v}
 
 
     fun buffer(off:Int, lim:Int) {
@@ -318,9 +313,9 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
     }
     val sourceType: String;
     init {
-        val jc = Entity::class.java
-        var ann: Entity? = target.getAnnotation(jc)
-        sourceType = if (ann != null && !ann.name.isEmpty()) ann.name else jc.getName()
+        val jc = javaClass<Entity>()
+        var ann = target.getAnnotation(jc)
+        sourceType = if (ann != null && !ann!!.name!!.isEmpty()) ann!!.name!! else jc.getName()
         load()
     }
     private val galaxy = ch.passenger.kinterest.Universe.galaxy<T,U>(target.entityName())!! as Galaxy<T,U>
@@ -354,11 +349,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
     }
     protected fun load() {
         if (filter.relation == FilterRelations.STATIC) {emitOrder(); return}
-        val del = ArrayList(order)
         order.clear()
-        del.forEach {
-            order.remove(it)
-        }
         log.info("$name: loading.... $offset->$limit")
         refresh()
     }
@@ -517,7 +508,7 @@ open class Interest<T : LivingElement<U>, U : Comparable<U>>(val name: String, v
         else {
             //provocate index out of bounds
             if(idx>=currentsize) return get(order[idx])!!
-            return galaxy.filter(filter, orderBy, idx, 1).timeout(500, TimeUnit.MILLISECONDS)!!.toBlocking().single()
+            return galaxy.filter(filter, orderBy, idx, 1).timeout(500, TimeUnit.MILLISECONDS)!!.toBlocking()!!.single()!!
         }
     }
     public fun indexOf(t: U): Int = order.indexOf(t)
@@ -553,7 +544,7 @@ object Universe {
         return galaxies.values().map { (it as Galaxy<*, *>).descriptor }
     }
 
-    public fun <T:LivingElement<U>,U:Comparable<U>> galaxy(entity:String): Galaxy<T,U>? {
+    public fun galaxy<T:LivingElement<U>,U:Comparable<U>>(entity:String): Galaxy<T,U>? {
         return galaxies[entity] as Galaxy<T,U>?
     }
 
@@ -623,7 +614,7 @@ abstract class Galaxy<T : LivingElement<U>, U : Comparable<U> >(val sourceType: 
 
         }
 
-        kind = if (entity.name == null || entity.name.trim().length == 0) sourceType.javaClass.getName() else entity.name
+        kind = if (entity.name == null || entity.name?.trim()?.length == 0) sourceType.javaClass.getName() else entity.name!!
         val obs = object : rx.Observer<Event<U>> {
 
             override fun onCompleted() {
@@ -647,7 +638,7 @@ abstract class Galaxy<T : LivingElement<U>, U : Comparable<U> >(val sourceType: 
             }
         }
         store.observable.filter { log.info("!!!###$it ${it?.sourceType}"); it!=null && it.sourceType == kind }?.subscribe(obs)
-        val call = {
+        val call = { ->
             try {
                 val drain: MutableList<Retriever<U>> = ArrayList();
                 drain.add(retrievers.take())
@@ -751,8 +742,8 @@ abstract class Galaxy<T : LivingElement<U>, U : Comparable<U> >(val sourceType: 
 }
 
 fun Class<*>.entityName(): String {
-    val ann = getAnnotation(Entity::class.java)
-    if (ann != null && ann.name.isNotEmpty()) return ann.name
+    val ann = getAnnotation(javaClass<Entity>())
+    if (ann != null && ann.name != null && ann.name.isNotEmpty()) return ann.name!!
     return getName()
 }
 
@@ -764,24 +755,24 @@ class EntityAction(val method:Method) {
 fun Class<*>.exposeds() : List<EntityAction> {
     val res = ArrayList<EntityAction>()
     getMethods().forEach {
-        if(it.getAnnotation(Expose::class.java)!=null) {
+        if(it.getAnnotation(javaClass<Expose>())!=null) {
             res.add(EntityAction(it))
         }
     }
     return res
 }
 
-public fun Method.unique(): Boolean = getAnnotation(Unique::class.java) != null
-public fun Method.index(): Boolean = getAnnotation(Index::class.java) != null
-public fun Method.transient(): Boolean = getAnnotation(Transient::class.java) != null
-public fun Method.relation(): Boolean = getAnnotation(OneToOne::class.java) != null
-public fun Method.relTarget(): Class<*> = getAnnotation(OneToOne::class.java)!!.targetEntity.java
-public fun Method.oneToMany(): Boolean = getAnnotation(OneToMany::class.java) != null
-public fun Method.label(): Boolean = getAnnotation(Label::class.java) != null
+public fun Method.unique(): Boolean = getAnnotation(javaClass<UniqueConstraint>()) != null
+public fun Method.index(): Boolean = getAnnotation(javaClass<Index>()) != null
+public fun Method.transient(): Boolean = getAnnotation(javaClass<Transient>()) != null
+public fun Method.relation(): Boolean = getAnnotation(javaClass<OneToOne>()) != null
+public fun Method.relTarget(): Class<*> = getAnnotation(javaClass<OneToOne>())!!.targetEntity.java!!
+public fun Method.oneToMany(): Boolean = getAnnotation(javaClass<OneToMany>()) != null
+public fun Method.label(): Boolean = getAnnotation(javaClass<Label>()) != null
 
 public fun Method.propertyName(): String {
     val mn = getName()!!
     if ((mn.startsWith("set") || mn.startsWith("get")) && mn.length > 3) return mn.substring(3).decapitalize()
-    if (mn.startsWith("is") && getReturnType()!!.isAssignableFrom(Boolean::class.java) && mn.length > 2) return mn.substring(2).decapitalize()
+    if (mn.startsWith("is") && getReturnType()!!.isAssignableFrom(javaClass<Boolean>()) && mn.length > 2) return mn.substring(2).decapitalize()
     return mn
 }

@@ -1,16 +1,11 @@
 package ch.passenger.kinterest.jetty
 
-import org.eclipse.jetty.server.Server
-import org.eclipse.jetty.server.Connector
-import org.eclipse.jetty.server.AbstractNetworkConnector
-import org.eclipse.jetty.server.Handler
+import org.eclipse.jetty.server.*
 import org.eclipse.jetty.servlet.ServletContextHandler
-import javax.servlet.Servlet
-import org.eclipse.jetty.websocket.servlet.WebSocketCreator
-import javax.servlet.http.HttpSession
 import org.eclipse.jetty.servlet.ServletHolder
+import org.eclipse.jetty.websocket.servlet.WebSocketCreator
 import org.slf4j.LoggerFactory
-import org.eclipse.jetty.server.ServerConnector
+import javax.servlet.http.HttpSession
 
 /**
  * Created by sdju on 25.07.13.
@@ -51,7 +46,7 @@ fun ServletContextHandler.servlets(cfg : ServletContextHandler.() -> Map<String,
     cfg().entrySet().forEach { addServlet(it.value, it.key) }
 }
 
-fun ServletContextHandler.plus(p:Pair<String,ServletHolder>) {
+operator fun ServletContextHandler.plus(p:Pair<String,ServletHolder>) {
     addServlet(p.second, p.first)
 }
 

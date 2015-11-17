@@ -1,10 +1,9 @@
 package ch.passenger.kinterest
 
-import java.util.ArrayList
 import org.junit.Test
 import org.slf4j.LoggerFactory
 import rx.subjects.PublishSubject
-import rx.Observable
+import java.util.*
 
 /**
  * Created by svd on 13/12/13.

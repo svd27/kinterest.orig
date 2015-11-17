@@ -1,59 +1,67 @@
 package ch.passenger.kinterest.examples.diaries
 
-import ch.passenger.kinterest.Universe
-import javax.swing.JFrame
-import java.awt.BorderLayout
-import javax.swing.JScrollPane
-import javax.swing.JTable
-import ch.passenger.kinterest.util.swing.InterestTableModel
-import ch.passenger.kinterest.Interest
-import ch.passenger.kinterest.neo4j.Neo4jDbWrapper
-import org.slf4j.LoggerFactory
-import ch.passenger.kinterest.PropertyFilter
-import ch.passenger.kinterest.FilterFactory
-import org.neo4j.kernel.GraphDatabaseAPI
-import javax.swing.JPanel
-import javax.swing.Box
-import javax.swing.JTextField
-import javax.swing.JLabel
-import javax.swing.AbstractAction
-import java.awt.event.ActionEvent
-import javax.swing.JButton
-import ch.passenger.kinterest.Galaxy
-import java.util.logging.Logger
-import java.util.logging.Level
-import javax.swing.table.TableRowSorter
-import ch.passenger.kinterest.service.InterestService
-import com.fasterxml.jackson.databind.ObjectMapper
-import ch.passenger.kinterest.util.json.Jsonifier
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
-import ch.passenger.kinterest.SortKey
-import ch.passenger.kinterest.SortDirection
-import java.util.ArrayList
-import ch.passenger.kinterest.oppositeSortDirection
-import javax.swing.JFormattedTextField
-import java.awt.event.FocusAdapter
-import java.awt.event.FocusEvent
-import ch.passenger.kinterest.service.KIApplication
+import ch.passenger.kinterest.*
 import ch.passenger.kinterest.jetty.*
-import ch.passenger.kinterest.service.SimpleServiceDescriptor
-import ch.passenger.kinterest.service.KISession
-import ch.passenger.kinterest.service.KIPrincipal
-import rx.plugins.RxJavaErrorHandler
-import ch.passenger.kinterest.entityName
-import ch.passenger.kinterest.style.styleApplication
+import ch.passenger.kinterest.neo4j.Neo4jDbWrapper
+import ch.passenger.kinterest.service.InterestService
+import ch.passenger.kinterest.service.KIApplication
 import ch.passenger.kinterest.service.ServiceDescriptor
+import ch.passenger.kinterest.service.SimpleServiceDescriptor
 import ch.passenger.kinterest.style.styleServices
+import ch.passenger.kinterest.util.swing.InterestTableModel
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.eclipse.jetty.server.*
+import org.eclipse.jetty.util.ssl.SslContextFactory
+import org.neo4j.kernel.GraphDatabaseAPI
+import org.neo4j.server.configuration.Configurator
+import org.neo4j.server.configuration.ServerConfigurator
+import org.slf4j.LoggerFactory
+import rx.plugins.RxJavaErrorHandler
+import java.awt.BorderLayout
+import java.awt.event.*
+import java.io.File
+import java.util.*
+import java.util.logging.Level
+import java.util.logging.Logger
+import javax.swing.*
 
 
 /**
  * Created by svd on 16/12/13.
  */
 val log = LoggerFactory.getLogger("diaries")!!
-
+var port : Int = 3333
+var neo4jport : Int = 7474
 
 public fun main(args: Array<String>) {
+    var rootPath = "/Users/svd/dev/proj/kotlin/kIjs/classes/artifacts/kjs";
+    /*
+    if(args.size>0) {
+        rootPath = args[0]
+    }
+    if(args.size>1) {
+        port = java.lang.Integer.parseInt(args[1])
+    }
+    if(args.size>2) {
+        neo4jport = java.lang.Integer.parseInt(args[2])
+    }
+    */
+    var f  = File("./kinterest.json")
+    if(args.size==1) {
+        f = File(args[0])
+    }
+
+    val json : JsonNode = ObjectMapper().readTree(f)!!
+    rootPath = json.path("root")!!.textValue()!!
+    port = json.path("port")!!.intValue()
+    neo4jport = json.path("neo4jport")!!.intValue()
+    val sslport = json.path("sslport")!!.intValue()
+    val keystore = json.path("keystore")!!.textValue()!!
+    val keystorepwd = json.path("keystorepwd")!!.textValue()!!
+    val keymgrpwd = json.path("keymgrpwd")!!.textValue()!!
+
+
     /*
 Logger.getLogger("").getHandlers().forEach {
     it.setLevel(Level.FINE)
@@ -68,9 +76,13 @@ Logger.getLogger("").getHandlers().forEach {
             e?.printStackTrace()
         }
     })
-    val db = org.neo4j.graphdb.factory.GraphDatabaseFactory().newEmbeddedDatabase("./neo/data")
+
+    val db = org.neo4j.graphdb.factory.GraphDatabaseFactory().newEmbeddedDatabase(File("./neo/data"))
     val api : GraphDatabaseAPI = db as GraphDatabaseAPI
-    val srv = org.neo4j.server.WrappingNeoServer(api)
+    val cfg = ServerConfigurator(api)
+    cfg.configuration()!!.setProperty(Configurator.WEBSERVER_ADDRESS_PROPERTY_KEY, "0.0.0.0")
+    cfg.configuration()!!.setProperty(Configurator.WEBSERVER_PORT_PROPERTY_KEY, neo4jport)
+    val srv = org.neo4j.server.WrappingNeoServer(api, cfg)
     srv.start()
 
     val neojDbWrapper = Neo4jDbWrapper(db)
@@ -78,28 +90,46 @@ Logger.getLogger("").getHandlers().forEach {
 
     val services : Iterable<ServiceDescriptor<*>> = listOf(
             SimpleServiceDescriptor(javaClass<InterestService<DiaryOwner,Long>>()) {
-                InterestService(Universe.galaxy(javaClass<DiaryOwner>().entityName())!!)
+                InterestService(Universe.galaxy(DiaryOwner::class.java.entityName())!!)
             },
             SimpleServiceDescriptor(javaClass<InterestService<Diary,Long>>()) {
-                InterestService(Universe.galaxy(javaClass<Diary>().entityName())!!)
+                InterestService(Universe.galaxy(Diary::class.java.entityName())!!)
             },
             SimpleServiceDescriptor(javaClass<InterestService<DiaryDayEntry,Long>>()) {
-                InterestService(Universe.galaxy(javaClass<DiaryDayEntry>().entityName())!!)
+                InterestService(Universe.galaxy(DiaryDayEntry::class.java.entityName())!!)
             }
     )
 
 
 
     val app = KIApplication("diaries", services+styleServices(neojDbWrapper))
+
+    val http = HttpConfiguration()
+    //http.setSecureScheme("https")
+    http.setSecurePort(sslport)
+
+    val ssl = SslContextFactory()
+    ssl.setKeyStorePath(keystore)
+    ssl.setKeyManagerPassword(keymgrpwd)
+    ssl.setKeyStorePassword(keystorepwd)
+    val https = HttpConfiguration(http)
+    https.addCustomizer(SecureRequestCustomizer())
+
+
+
     jetty {
         connectors {
             arrayOf(serverConnector {
-                setPort(3333)
+                setPort(port)
             })
         }
 
+        val sslcon = ServerConnector(this, SslConnectionFactory(ssl, "http/1.1"),HttpConnectionFactory(https) )
+        sslcon.setPort(sslport)
+        addConnector(sslcon)
+
         servlets {
-            AppServlet(app).init(this)
+            AppServlet(app, rootPath).init(this)
         }
     }.start()
 

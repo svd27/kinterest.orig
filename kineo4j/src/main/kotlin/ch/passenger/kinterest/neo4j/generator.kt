@@ -1,21 +1,21 @@
 package ch.passenger.kinterest.neo4j
 
-import java.util.HashMap
-import javax.persistence.*
-import java.io.File
-import org.slf4j.LoggerFactory
-import javassist.ClassPool
-import java.io.Writer
-import java.io.FileWriter
-import org.joda.time.DateTime
-import java.io.FileInputStream
-import javassist.CtClass
-import java.util.ArrayList
-import javassist.CtMethod
 import ch.passenger.kinterest.annotations.DefaultValue
-import org.jetbrains.annotations.Nullable
-import java.lang.reflect.Modifier
 import ch.passenger.kinterest.annotations.Expose
+import ch.passenger.kinterest.annotations.Unique
+import javassist.ClassPool
+import javassist.CtClass
+import javassist.CtMethod
+import org.jetbrains.annotations.Nullable
+import org.joda.time.DateTime
+import org.slf4j.LoggerFactory
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileWriter
+import java.io.Writer
+import java.lang.reflect.Modifier
+import java.util.*
+import javax.persistence.*
 
 /**
  * Created by svd on 17/12/13.
@@ -26,7 +26,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
     private val uniqueConstraints = StringBuilder()
     val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
             "java.util.List" to "jet.MutableList", "int" to "Int", "java.lang.Long" to "Long",
-            "java.lang.Integer" to "Int");
+            "java.lang.Integer" to "Int", "boolean" to "Boolean");
     val domainBuffer = StringBuilder();
 
     init {
@@ -87,14 +87,14 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         else cls.getName()!!
         var label = cls.getName()
         val ean = cls.getAnnotation(javaClass<Entity>())
-        if (ean is Entity && !(ean.name?.isEmpty()?:true)) {
+        if (ean is Entity && !ean.name.isEmpty()) {
             label = ean.name
         }
         val cimpl = "${cn}Impl"
         val mths = methods(cls)
         var id: Prop? = null
         val mandatory: MutableList<Prop> = ArrayList()
-        mths.values().forEach {
+        mths.values.forEach {
             log.info("checking prop: $it")
             if (it.id) {
                 id = it
@@ -182,7 +182,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                 if(it.nullable || !it.ro) throw IllegalStateException()
                 val many : OneToMany = it.ms[0].getAnnotation(javaClass<OneToMany>())!! as OneToMany
 
-                val target = many.targetEntity.java
+                val target = many.targetEntity!!.java
                 var ret : Class<*>? = null
                 target.getMethods().forEach {
                     if(it.getAnnotation(javaClass<Id>())!=null) {
@@ -280,7 +280,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 
         val onetoone : Boolean get()  = ms[0].getAnnotation(javaClass<OneToOne>())!=null
         val ontomany : Boolean get()  = ms[0].getAnnotation(javaClass<OneToMany>())!=null
-        val unique : Boolean get()  = id || ms[0].getAnnotation(javaClass<UniqueConstraint>())!=null
+        val unique : Boolean get()  = id || ms[0].getAnnotation(javaClass<Unique>())!=null
 
         public override fun toString(): String = "$name: id? $id ro? $ro default: ${defval()} null: $nullable"
         public fun dumpAnn(): String {

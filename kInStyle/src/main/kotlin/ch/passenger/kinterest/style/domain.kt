@@ -1,21 +1,14 @@
 package ch.passenger.kinterest.style
 
-import ch.passenger.kinterest.LivingElement
+import ch.passenger.kinterest.*
+import ch.passenger.kinterest.annotations.Expose
+import ch.passenger.kinterest.annotations.Index
+import ch.passenger.kinterest.annotations.Label
+import ch.passenger.kinterest.annotations.Unique
 import ch.passenger.kinterest.util.EntityList
 import javax.persistence.Entity
-import ch.passenger.kinterest.annotations.Index
-import javax.persistence.UniqueConstraint
 import javax.persistence.Id
-
 import javax.persistence.OneToMany
-import ch.passenger.kinterest.Universe
-import ch.passenger.kinterest.annotations.Expose
-import ch.passenger.kinterest.annotations.Label
-import com.fasterxml.jackson.databind.node.ObjectNode
-import ch.passenger.kinterest.ElementFilter
-import ch.passenger.kinterest.SortKey
-import ch.passenger.kinterest.SortDirection
-import ch.passenger.kinterest.annotations.Unique
 
 /**
  * Created by svd on 18/01/2014.
@@ -23,13 +16,11 @@ import ch.passenger.kinterest.annotations.Unique
 
 
 @Entity(name="CSSStylesheet")
-public interface  CSSStylesheet : LivingElement<Long> {
+public interface CSSStylesheet : LivingElement<Long> {
     @Id
     override fun id(): Long
-    @Index @Label @Unique
-    val name : String
-          get
-    val rules : EntityList<CSSStylesheet,Long,CSSStyleRule,Long> @OneToMany(targetEntity= CSSStyleRule::class) get
+    val name : String @Unique @Index @Label get
+    val rules : EntityList<CSSStylesheet,Long,CSSStyleRule,Long> @OneToMany(targetEntity=CSSStyleRule::class) get
     @Expose fun addRule(selector:String, styles:String) {
         val gr = Universe.galaxy<CSSStyleRule,Long>("CSSStyleRule")!!
         val gp = Universe.galaxy<CSSProperty,Long>("CSSProperty")!!
@@ -40,7 +31,7 @@ public interface  CSSStylesheet : LivingElement<Long> {
             if(it.trim().length>0) {
                 val pv = it.split(":")
                 if(pv.size==2) {
-                    val id = gp.create(mapOf("name" to pv[0], "value" to pv[1]))
+                    val id = gp.create(mapOf("name" to pv[0], "value" to pv[1], "role" to pv[0]))
                     val p = gp.get(id)!!
                     rule.properties.add(p)
                 }
@@ -72,27 +63,25 @@ public interface  CSSStylesheet : LivingElement<Long> {
 public interface CSSStyleRule : LivingElement<Long> {
     @Id
     override fun id(): Long
-    @Label @Index
-    val selector : String
-
-    val properties : EntityList<CSSStyleRule,Long,CSSProperty,Long>  @OneToMany(targetEntity= CSSProperty::class) get
+    val selector : String @Label @Index get
+    val properties : EntityList<CSSStyleRule,Long,CSSProperty,Long> @OneToMany(targetEntity=CSSProperty::class) get
     @Expose fun getCSS() : String {
         return properties.map { "${it.name}: ${it.value};" }.joinToString(" ", "$selector {", "}")
     }
 
     @Expose fun addProperty(name:String, value:String) : Long {
         val gp = Universe.galaxy<CSSProperty,Long>("CSSProperty")
-        val id = gp!!.create(mapOf("name" to name, "value" to value))
+        val id = gp!!.create(mapOf("name" to name, "value" to value, "role" to name))
         properties.add(gp.get(id)!!)
         return id
     }
 }
 
 @Entity(name="CSSProperty")
-public interface  CSSProperty : LivingElement<Long> {
+public interface CSSProperty : LivingElement<Long> {
     @Id
     override fun id(): Long
-    @Label @Index
-    val name : String  get
+    var role : String @Label @Index get
+    val name : String @Label @Index get
     var value : String
 }

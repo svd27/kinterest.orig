@@ -1,4 +1,5 @@
-syntax: regex
+syntax: glob
 \.idea
+*.iml
 target
 

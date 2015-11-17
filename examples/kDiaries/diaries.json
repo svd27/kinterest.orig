@@ -1,0 +1,9 @@
+{
+  "root" : "/home/yt-u06/stuff/kotlin/projects/kijs/classes/artifacts/kijs",
+  "port" : 3333,
+  "neo4jport": 7474,
+  "sslport": 3334,
+  "keystore": "./etc/keystore",
+  "keystorepwd": "kinterest",
+  "keymgrpwd": "kinterest"
+}
