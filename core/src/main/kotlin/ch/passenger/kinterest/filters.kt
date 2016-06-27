@@ -28,9 +28,9 @@ interface ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
 
     fun kind() : String  {
         //log.info("ann: ${target.getAnnotation(javaClass<Entity>())?.name()}")
-        val ann = target.getAnnotation(javaClass<Entity>())?.name
-        if(ann!=null&&ann.trim().length()>0) return ann
-        return target.getName()
+        val ann = target.getAnnotation(Entity::class.java)?.name
+        if(ann!=null&&ann.trim().length>0) return ann
+        return target.name
     }
 
     fun toJson() : ObjectNode
@@ -42,7 +42,7 @@ interface CombinationFilter<T:LivingElement<U>,U:Comparable<U>> : ElementFilter<
     override fun toJson(): ObjectNode {
        val om = ObjectMapper()
        val json = om.createObjectNode()!!
-       json["relation"] = om.valueToTree(relation.name())!!
+       json["relation"] = om.valueToTree(relation.name)!!
         val op = om.createArrayNode()!!
         json["operands"] = op
         combination.forEach {
@@ -55,7 +55,7 @@ interface CombinationFilter<T:LivingElement<U>,U:Comparable<U>> : ElementFilter<
 
 public enum class FilterRelations {EQ, NEQ, NOT, AND, OR, LT, GT, LTE, GTE, IN, LIKE, NOTLIKE, STATIC, FROM, TO}
 
-abstract class PropertyFilter<T,U:Comparable<U>,V:Comparable<V>>(override val target:Class<T>, val property:String, val value:V) : ElementFilter<T,U> where T:LivingElement<U>, U:Comparable<U> {
+abstract class PropertyFilter<T,U,V:Comparable<V>>(override val target:Class<T>, val property:String, val value:V) : ElementFilter<T,U> where U : Comparable<U>, T:LivingElement<U> {
     val log = LoggerFactory.getLogger(PropertyFilter::class.java)
     private var method : Method? = null;
     private var _kind :String?= null
@@ -131,14 +131,14 @@ abstract class PropertyFilter<T,U:Comparable<U>,V:Comparable<V>>(override val ta
     override fun toJson(): ObjectNode {
         val om = ObjectMapper()
         val json = om.createObjectNode()!!
-        json["relation"] = om.valueToTree(relation.name())
+        json["relation"] = om.valueToTree(relation.name)
         json["property"] = om.valueToTree(property)
         json["value"] = om.valueToTree(value)
         return json
     }
     companion object {
         val dates : DateFormat = SimpleDateFormat("yyyyMMddHHmmssSSS")
-        public fun eq<T:LivingElement<U>,U:Comparable<U>,V:Comparable<V>>(target:Class<T>,p:String, value:V) : PropertyFilter<T,U,V> = EQ(target, p, value)
+        public fun<T:LivingElement<U>,U:Comparable<U>,V:Comparable<V>> eq(target:Class<T>,p:String, value:V) : PropertyFilter<T,U,V> = EQ(target, p, value)
     }
 }
 
@@ -223,7 +223,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
         }
     }
 
-    fun binrel<V:Comparable<V>>(p:String, v:V, rel:FilterRelations,filter:(e:V,v:Any?)->Boolean) : PropertyFilter<T,U,V> {
+    fun<V:Comparable<V>> binrel(p:String, v:V, rel:FilterRelations,filter:(e:V,v:Any?)->Boolean) : PropertyFilter<T,U,V> {
         return object : PropertyFilter<T,U,V>(target, p, v) {
             override fun compare(e:V,av:Any?) = filter(e,av)
 
@@ -241,7 +241,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
             override fun toJson(): ObjectNode {
                 val om = ObjectMapper()
                 val json = om.createObjectNode()!!
-                json["relation"] = om.valueToTree(FilterRelations.NOT.name())
+                json["relation"] = om.valueToTree(FilterRelations.NOT.name)
                 json["operand"] = op.toJson()
                 return json
             }
@@ -269,7 +269,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
             override fun toJson(): ObjectNode {
                 val om = ObjectMapper()
                 val json = om.createObjectNode()!!
-                json["relation"] = om.valueToTree(FilterRelations.FROM.name())
+                json["relation"] = om.valueToTree(FilterRelations.FROM.name)
                 json["filter"] = f.toJson()
                 return json
             }
@@ -292,7 +292,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
             override fun toJson(): ObjectNode {
                 val om = ObjectMapper()
                 val json = om.createObjectNode()!!
-                json["relation"] = om.valueToTree(FilterRelations.TO.name())
+                json["relation"] = om.valueToTree(FilterRelations.TO.name)
                 json["filter"] = f.toJson()
                 return json
             }
@@ -384,7 +384,7 @@ class FilterFactory<T,U:Comparable<U>>(val galaxy:Galaxy<T,U>, val target:Class<
         val cls : Class<*>? = meth?.getReturnType()
 
         log.info("node $node cls $cls target: $target")
-        if(descriptor.descriptors[prop]!=null && descriptor.descriptors[prop]!!.classOf.isAssignableFrom(javaClass<Date>())) {
+        if(descriptor.descriptors[prop]!=null && descriptor.descriptors[prop]!!.classOf.isAssignableFrom(Date::class.java)) {
             return Jsonifier.readDate(node.textValue()!!) as Comparable<Any>
         }
         return om.treeToValue<Any>(node, cls!! as Class<Any>)!! as Comparable<Any>
@@ -400,7 +400,7 @@ class StaticFilter<T:LivingElement<U>,U:Comparable<U>>(private val interest:Inte
     override fun toJson(): ObjectNode {
         val om = ObjectMapper()
         val json = om.createObjectNode()!!
-        json["relation"] = om.valueToTree(FilterRelations.STATIC.name())
+        json["relation"] = om.valueToTree(FilterRelations.STATIC.name)
         return json
     }
 }

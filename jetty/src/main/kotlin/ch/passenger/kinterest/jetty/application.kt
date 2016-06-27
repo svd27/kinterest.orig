@@ -121,16 +121,16 @@ class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
             if (s is InterestService<*, *>) {
                 val path = "/${app.name}/${s.galaxy.descriptor.entity}/*"
                 log.info(">>>>>>>>>>>>>>>>ADDING: ${s.galaxy.descriptor.entity} on $path")
-                ctx + (path to (ServletHolder(InterestServlet(s, app))))
+                ctx + (path to (ServletHolder(InterestServlet(s as InterestService<LivingElement<Comparable<Comparable<*>>>, Comparable<Comparable<*>>>, app))))
             }
         }
         ctx.socket {
-            "/${app.name}/events" to javaClass<EventSocket>() as Class<KIWebsocketAdapter>
+            "/${app.name}/events" to EventSocket::class.java as Class<KIWebsocketAdapter>
         }
 
         ctx.socket {
 
-            "/${app.name}/entities" to javaClass<EntitySocket>() as Class<KIWebsocketAdapter>
+            "/${app.name}/entities" to EntitySocket::class.java as Class<KIWebsocketAdapter>
         }
     }
 
@@ -155,7 +155,7 @@ class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
                 pn.put("relation", pd.relation)
                 pn.put("oneToMany", pd.oneToMany)
                 if(pd.relation || pd.oneToMany) {
-                    val ann = pd.classOf.getAnnotation(javaClass<Entity>())
+                    val ann = pd.classOf.getAnnotation(Entity::class.java)
                     pn.put("entity", ann?.name)
                 } else {
                     pn.put("type", pd.getter.returnType?.name)
@@ -181,7 +181,7 @@ class AppServlet(app: KIApplication, val rootPath:String) : KIServlet(app) {
     }
 }
 
-class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : KIServlet(app) {
+class InterestServlet<T:LivingElement<U>,U:Comparable<U>>(val service: InterestService<T,U>, app: KIApplication) : KIServlet(app) {
     val patCrt = Pattern.compile("/create/([A-Za-z]+)")
     val patFilter = Pattern.compile("/filter/([0-9]+)")
     val patRemove = Pattern.compile("/remove/([0-9]+)")
@@ -274,8 +274,8 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             val json = om.createObjectNode()!!
             json.put("response", "ok")
             json.put("interest", i)
-            resp.setContentType("application/json")
-            resp.getWriter()?.print(json.toString()!!)
+            resp.contentType = "application/json"
+            resp.writer?.print(json.toString()!!)
             resp.flushBuffer()
 
         } else if (mRem.matches()) {
@@ -286,14 +286,6 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
     }
 
 
-    fun Reader.eachLine(cb: (String) -> Unit) {
-        var l = readLine()
-        while (l != null) {
-            cb(l!!)
-            l = readLine()
-        }
-    }
-
     override fun doPost(req: HttpServletRequest?, resp: HttpServletResponse?) {
         if (req == null) throw IllegalStateException()
         if (resp == null) throw IllegalStateException()
@@ -302,9 +294,9 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
         resp.setHeader("Cache-Control", "no-cache")
         resp.setHeader("Access-Control-Allow-Origin", "*")
 
-        val path = req.getPathInfo()!!
+        val path = req.pathInfo!!
         if(path=="/retrieve") {
-            val ips = req.getInputStream()!!
+            val ips = req.inputStream!!
             val f = read(ips)
             log.info("RETRIEVE: $f")
 
@@ -314,7 +306,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
                     if(ses!=null) {
                         val pub = ses.entities
                         if(pub!=null)
-                        service.galaxy.retriever(on.map { it.longValue() as Comparable<Any> }, pub)
+                        service.galaxy.retriever(on.map { it.longValue() as U }, pub)
                         else {
                             val context = IllegalStateException("exception to support tracking")
                             log.warn("retrieval request with no defined publisher", context)}
@@ -330,7 +322,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
             val sint = mf.group(1)!!
             val id = Integer.parseInt(sint)
 
-            val ips = req.getInputStream()!!
+            val ips = req.inputStream!!
             val f = read(ips)
             log.info("FILTER: $f")
 
@@ -341,7 +333,7 @@ class InterestServlet(val service: InterestService<*, *>, app: KIApplication) : 
         }
         val ms = patSave.matcher(path)
         if(ms.matches()) {
-            service.save(om.readTree(read(req.getInputStream()!!))!! as ObjectNode)
+            service.save(om.readTree(read(req.inputStream!!))!! as ObjectNode)
             ack(resp)
             return
         }
@@ -421,16 +413,16 @@ abstract class KIServlet(val app: KIApplication) : HttpServlet() {
     protected fun ack(resp:HttpServletResponse, fields:Map<String,Any> = mapOf()) {
         val js = om.createObjectNode()!!
         js.put("response", "ok")
-        fields.entrySet().forEach {
-            js.put(it.getKey(), om.valueToTree<JsonNode>(it.getValue()))
+        fields.entries.forEach {
+            js.put(it.key, om.valueToTree<JsonNode>(it.value))
         }
-        resp.setContentType("application/json")
-        resp.getWriter()?.write(om.writeValueAsString(js)!!)
+        resp.contentType = "application/json"
+        resp.writer?.write(om.writeValueAsString(js)!!)
         resp.flushBuffer()
     }
 
     protected fun ack(e:Throwable, resp:HttpServletResponse) {
-        resp.getWriter()?.write("{response: 'error', message: '${e.getMessage()}'}")
+        resp.getWriter()?.write("{response: 'error', message: '${e.message}'}")
         resp.flushBuffer()
     }
 
@@ -481,13 +473,13 @@ class StaticServlet(val root:File) : HttpServlet() {
         if (req == null) throw IllegalStateException()
         if (resp == null) throw IllegalStateException()
 
-        val path = req.getPathInfo()!!
+        val path = req.pathInfo!!
         val resource = File(root, path)
         val m  = Files.probeContentType(resource.toPath())
-        resp.setContentType(m)
+        resp.contentType = m
         val fin = FileInputStream(resource)
         val ba = Array<Byte>(1024) {0}
-        fin.buffered(1024).copyTo(resp.getOutputStream()!!)
+        fin.buffered(1024).copyTo(resp.outputStream!!)
         resp.flushBuffer()
     }
 

@@ -6,7 +6,7 @@ import java.util.ArrayList
 /**
  * Created by svd on 16/12/13.
  */
-fun AutoCloseable.with<T>(run: () -> T?) {
+fun<T> AutoCloseable.with(run: () -> T?) {
     try {
         run()
     } finally {

@@ -32,18 +32,18 @@ fun Server.serverConnector(cfg : ServerConnector.() -> Unit) : Connector {
 }
 
 fun Server.handler(cfg : Server.() -> Handler) {
-    setHandler(cfg())
+    handler = cfg()
 }
 
 fun Server.servlets(cfg:ServletContextHandler.()->Unit) {
     val ctx = ServletContextHandler(ServletContextHandler.SESSIONS)
     ctx.cfg()
-    setHandler(ctx)
+    handler = ctx
 }
 
 
 fun ServletContextHandler.servlets(cfg : ServletContextHandler.() -> Map<String,ServletHolder>) {
-    cfg().entrySet().forEach { addServlet(it.value, it.key) }
+    cfg().entries.forEach { addServlet(it.value, it.key) }
 }
 
 operator fun ServletContextHandler.plus(p:Pair<String,ServletHolder>) {
@@ -55,9 +55,9 @@ fun ServletContextHandler.socket(cfg : ServletContextHandler.() -> Pair<String,C
     val pair = cfg()
     val wsc = WebSocketCreator {
         req,resp ->
-        val ctor = pair.second.getConstructor(javaClass<HttpSession>())
-        logJetty.info("create ws ${ctor} ${req} ${req?.getSession()}")
-        ctor.newInstance(req?.getSession()!!)
+        val ctor = pair.second.getConstructor(HttpSession::class.java)
+        logJetty.info("create ws $ctor $req ${req?.session}")
+        ctor.newInstance(req?.session!!)
     }
     //class WSSServlet() : KIWebsocketServlet(wsc)
     val sh = ServletHolder(object : KIWebsocketServlet(wsc){})

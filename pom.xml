@@ -11,7 +11,7 @@
     <packaging>pom</packaging>
 
     <properties>
-        <kotlin.version>1.0.0-beta-2423</kotlin.version>
+        <kotlin.version>1.0.2</kotlin.version>
         <jetty.version>9.3.5.v20151012</jetty.version>
         <junit.version>4.10</junit.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

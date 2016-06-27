@@ -16,7 +16,7 @@ import javax.servlet.http.HttpServletResponse
 
 
 class ServerTests {
-    private val log : Logger = LoggerFactory.getLogger(javaClass<ServerTests>())!!;
+    private val log : Logger = LoggerFactory.getLogger(ServerTests::class.java)!!;
     val expect = "Hello World!"
 
     @Test
@@ -31,9 +31,9 @@ class ServerTests {
                 object : AbstractHandler() {
 
                     override fun handle(p0: String?, p1: Request?, p2: HttpServletRequest?, p3: HttpServletResponse?) {
-                        p3?.setCharacterEncoding("UTF-8")
-                        p3?.setContentType("text/plain")
-                        val w = p3?.getWriter()!!
+                        p3?.characterEncoding = "UTF-8"
+                        p3?.contentType = "text/plain"
+                        val w = p3?.writer!!
                         w.write(expect)
                         w.flush()
                         w.close()
@@ -44,9 +44,9 @@ class ServerTests {
 
         server.start()
         val client = HttpClient()
-        client.setFollowRedirects(false)
+        client.isFollowRedirects = false
         client.start()
         val contentResponse = client.GET("http://localhost:3333")
-        assert(contentResponse?.getContentAsString()==expect)
+        assert(contentResponse?.contentAsString ==expect)
     }
 }

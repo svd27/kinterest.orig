@@ -21,7 +21,7 @@ import javax.persistence.*
  * Created by svd on 17/12/13.
  */
 class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, targetPackage:String="") {
-    private val log = LoggerFactory.getLogger(javaClass<Neo4jGenerator>())!!
+    private val log = LoggerFactory.getLogger(Neo4jGenerator::class.java)!!
     private val pool: ClassPool = ClassPool.getDefault()!!;
     private val uniqueConstraints = StringBuilder()
     val trans = mapOf("java.lang.String" to "String", "long" to "Long", "double" to "Double",
@@ -70,7 +70,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             val ctClass = pool.makeClass(FileInputStream(f))!!
             log.info("ctClass: ${ctClass.getName()}")
             ctClass.getAnnotations()!!.forEach { log.info("$it") }
-            val entity = ctClass.getAnnotation(javaClass<Entity>())
+            val entity = ctClass.getAnnotation(Entity::class.java)
             if (entity != null) {
                 target.append(output(ctClass))
             }
@@ -86,7 +86,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         val cn = if (cls.getName()!!.indexOf('.') > 0) cls.getName()!!.substring(cls.getName()!!.lastIndexOf('.') + 1)
         else cls.getName()!!
         var label = cls.getName()
-        val ean = cls.getAnnotation(javaClass<Entity>())
+        val ean = cls.getAnnotation(Entity::class.java)
         if (ean is Entity && !ean.name.isEmpty()) {
             label = ean.name
         }
@@ -109,7 +109,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
         val mandPars = StringBuilder()
         val crtInit = StringBuilder()
         val body = StringBuilder()
-        mths.values().forEach {
+        mths.values.forEach {
             assert(it.unique.xor(it.nullable))
             if (!it.id && !it.onetoone && !it.ontomany) {
                 body.append("\noverride ")
@@ -135,7 +135,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
                 }
             }
             if(!it.id && it.onetoone) {
-                val entity : Entity = it.ms[0].getReturnType()!!.getAnnotation(javaClass<Entity>())!! as Entity
+                val entity : Entity = it.ms[0].getReturnType()!!.getAnnotation(Entity::class.java)!! as Entity
                 body.append("\noverride ")
                 if (it.ro) body.append("val ") else body.append("var ")
                 body.append(it.name).append(" : ").append(it.kind)
@@ -180,12 +180,12 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             }
             if(!it.id && it.ontomany) {
                 if(it.nullable || !it.ro) throw IllegalStateException()
-                val many : OneToMany = it.ms[0].getAnnotation(javaClass<OneToMany>())!! as OneToMany
+                val many : OneToMany = it.ms[0].getAnnotation(OneToMany::class.java)!! as OneToMany
 
                 val target = many.targetEntity!!.java
                 var ret : Class<*>? = null
                 target.getMethods().forEach {
-                    if(it.getAnnotation(javaClass<Id>())!=null) {
+                    if(it.getAnnotation(Id::class.java)!=null) {
                         if(ret==null)
                         ret = it.getReturnType() as Class<*>
 
@@ -203,7 +203,7 @@ class Neo4jGenerator(val file: File, val recurse: Boolean, val target: File, tar
             }
         }
 
-        val nullables = mths.values().filter { it.nullable }.map { "\"${it.name}\"" }.joinToString(",");
+        val nullables = mths.values.filter { it.nullable }.map { "\"${it.name}\"" }.joinToString(",");
         domainBuffer.append("boostrap${cn}(db)\n")
 
         body.append("""
@@ -260,11 +260,11 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
 
         val ro: Boolean get() = ms.size == 1
         fun defval(): String? {
-            val dv = ms[0].getAnnotation(javaClass<DefaultValue>()) as DefaultValue?
+            val dv = ms[0].getAnnotation(DefaultValue::class.java) as DefaultValue?
             return dv?.value
         }
-        val id: Boolean = has(javaClass<Id>())
-        val nullable: Boolean = has(javaClass<Nullable>())
+        val id: Boolean = has(Id::class.java)
+        val nullable: Boolean = has(Nullable::class.java)
 
         fun has(ann: Class<*>): Boolean {
             if (ms[0].getAnnotation(ann) != null) return true
@@ -278,9 +278,9 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
             return rt
         }
 
-        val onetoone : Boolean get()  = ms[0].getAnnotation(javaClass<OneToOne>())!=null
-        val ontomany : Boolean get()  = ms[0].getAnnotation(javaClass<OneToMany>())!=null
-        val unique : Boolean get()  = id || ms[0].getAnnotation(javaClass<Unique>())!=null
+        val onetoone : Boolean get()  = ms[0].getAnnotation(OneToOne::class.java)!=null
+        val ontomany : Boolean get()  = ms[0].getAnnotation(OneToMany::class.java)!=null
+        val unique : Boolean get()  = id || ms[0].getAnnotation(Unique::class.java)!=null
 
         public override fun toString(): String = "$name: id? $id ro? $ro default: ${defval()} null: $nullable"
         public fun dumpAnn(): String {
@@ -296,7 +296,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
         cls.getMethods()?.forEach {
             if (!Modifier.isStatic(it.getModifiers()) && !Modifier.isPrivate(it.getModifiers())) {
                 if (it.getName()!!.startsWith("get")) {
-                    if (it.getAnnotation(javaClass<Transient>()) == null && it.getAnnotation(javaClass<Expose>()) == null) {
+                    if (it.getAnnotation(Transient::class.java) == null && it.getAnnotation(Expose::class.java) == null) {
                         val capName = it.getName()!!.substring(3)
                         val pn = capName.decapitalize()
                         if (pn != "class") {
@@ -309,7 +309,7 @@ public fun boostrap${cn}(db:ch.passenger.kinterest.neo4j.Neo4jDbWrapper) {
                             else props[pn] = Prop(pn, arrayOf(it, setter!!))
                         }
                     }
-                } else if(it.getAnnotation(javaClass<Id>())!=null) {
+                } else if(it.getAnnotation(Id::class.java)!=null) {
                     if(!props.containsKey(it.getName()))
                     props[it.getName()!!] = Prop(it.getName()!!, arrayOf(it))
                 }

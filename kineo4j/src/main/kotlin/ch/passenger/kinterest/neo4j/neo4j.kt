@@ -49,7 +49,7 @@ public class Neo4jDbWrapper(val db: GraphDatabaseService) {
 }
 
 class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : DataStore<Event<U>, U> {
-    private val log = LoggerFactory.getLogger(javaClass<Neo4jDatastore<T,U>>())!!;
+    private val log = LoggerFactory.getLogger(Neo4jDatastore::class.java)!!;
     private val subject: PublishSubject<Event<U>> = PublishSubject.create()!!;
     private val engine = db.engine;
 
@@ -234,11 +234,11 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
 
     override fun create(id: U, values: Map<String, Any?>, descriptor: DomainObjectDescriptor) {
         val um: MutableMap<String, Any?> = HashMap()
-        values.entrySet().filter { descriptor.uniques.contains(it.key) }.map { it.key to it.value }.forEach { um.putAll(it) }
-        val setter = values.entrySet().filter { !descriptor.uniques.contains(it.key) }.map { it.key }
+        values.entries.filter { descriptor.uniques.contains(it.key) }.map { it.key to it.value }.forEach { um += it }
+        val setter = values.entries.filter { !descriptor.uniques.contains(it.key) }.map { it.key }
         val kind = descriptor.entity
         tx {
-            val rels = values.keySet().filter { descriptor.descriptors[it]!!.relation }
+            val rels = values.keys.filter { descriptor.descriptors[it]!!.relation }
 
             val inits = values.filter { !rels.contains(it.key) }.map { "${it.key}: {${it.key}}" }.reduce { a, b -> "$a, $b" }
             val q: String? = """
@@ -247,7 +247,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
             RETURN n
             """;
             val m: MutableMap<String, Any> = HashMap()
-            values.entrySet().forEach {
+            values.entries.forEach {
                 val v = descriptor.descriptors[it.key]!!.toDataStore(it.value)
                 if (v != null) m[it.key] = v
                 else m[it.key] = "NULL"
@@ -313,7 +313,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
     }
 
     private fun labelForClass(el: Class<LivingElement<*>>): String {
-        val ann = el.getAnnotation(javaClass<Entity>())
+        val ann = el.getAnnotation(Entity::class.java)
         if (ann != null && ann.name.isNotEmpty()) {
             return ann.name!!
         }
@@ -380,7 +380,7 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
             val executionResult = engine.execute(q, pars)
             val resourceIterator = executionResult?.columnAs<V>("ID")
             var res: V? = null
-            if (resourceIterator != null) resourceIterator.with<Unit> {
+            resourceIterator?.with<Unit> {
                 if (resourceIterator.hasNext()) res = resourceIterator.next() else null
             }
             res
@@ -522,8 +522,8 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                 }
             }
         } catch(e: Exception) {
-            if (e.getCause() is AlreadyIndexedException) {
-                log.warn(e.getMessage())
+            if (e.cause is AlreadyIndexedException) {
+                log.warn(e.message)
             } else throw e
         }
         desc.indices.forEach {
@@ -542,8 +542,8 @@ class Neo4jDatastore<T:Event<U>, U:Comparable<U>>(val db: Neo4jDbWrapper) : Data
                     }
                 }
             } catch(e: CypherExecutionException) {
-                if (e.getCause() is AlreadyIndexedException) {
-                    log.warn(e.getMessage())
+                if (e.cause is AlreadyIndexedException) {
+                    log.warn(e.message)
                 }
                 else throw e
             }
@@ -627,7 +627,7 @@ class Neo4jFilterFactory {
 
         //TODO: HACK, we need a strategic solution for this
         if(value.javaClass.isEnum()) {
-            pars.put(pn, (value as Enum<*>).name())
+            pars.put(pn, (value as Enum<*>).name)
         } else if(value is Date) {
             pars.put(pn, convertDate(value))
         }
@@ -643,9 +643,9 @@ class Neo4jFilterFactory {
     }
 
     fun<T : LivingElement<U>, U : Comparable<U>> relation(on:String, f: RelationFilter<T, U>, pars: MutableMap<String, Any> = HashMap(), matches:MutableMap<String,String>): String {
-        val par = "$on${matches.size()}"
+        val par = "$on${matches.size}"
         matches[par] = "($par:${f.f.kind})"
-        val rpar = "r${matches.size()}"
+        val rpar = "r${matches.size}"
         if(f.relation==FilterRelations.FROM) {
             matches[rpar] = "($on)<-[:${f.property}]-($par)"
             return " ${clause<LivingElement<Comparable<Any>>,Comparable<Any>,Comparable<Any>>(par, f.f as ElementFilter<LivingElement<Comparable<Any>>,Comparable<Any>>, pars, matches) }"
@@ -659,7 +659,7 @@ class Neo4jFilterFactory {
         val op = op(f.relation)
         val sb = StringBuilder()
         f.combination.forEach {
-            if (sb.length() > 0) {
+            if (sb.length > 0) {
                 sb.append(" $op ")
             }
             sb.append("(").append(clause<T,U,Comparable<Any>>(on, it, pars, matches)).append(")")
@@ -702,7 +702,7 @@ public fun Node.dump(): String {
 
 
 abstract class Neo4jDomainObject<T:Comparable<T>>(val oid: T, val store: Neo4jDatastore<Event<T>,T>, protected val kind: String, protected val node: Node, val descriptor:DomainObjectDescriptor) : DomainObject {
-    private val log = LoggerFactory.getLogger(javaClass<Neo4jDomainObject<T>>())!!
+    private val log = LoggerFactory.getLogger(Neo4jDomainObject::class.java)!!
     protected fun<U> prop(name:String, pd:DomainPropertyDescriptor): U? =
             store.tx {
                _prop<U>(name, pd)

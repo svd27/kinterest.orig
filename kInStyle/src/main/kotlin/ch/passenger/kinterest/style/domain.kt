@@ -53,7 +53,7 @@ public interface CSSStylesheet : LivingElement<Long> {
         val f = gr.filterFactory.to("properties", subf)
         val res = gr.filter(f, arrayOf(SortKey("id", SortDirection.ASC)), 0, 0).toList()!!.toBlocking()!!.single()!!
 
-        return Array(res.size()) {
+        return Array(res.size) {
             res[it].id()
         }
     }

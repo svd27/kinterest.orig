@@ -42,9 +42,9 @@ public object Jsonifier {
         return json
     }
 
-    fun jsonify<U:Comparable<U>>(event: Event<U>): ObjectNode {
+    fun<U:Comparable<U>> jsonify(event: Event<U>): ObjectNode {
         val on = om.createObjectNode()!!
-        on.put("kind", event.kind.name())
+        on.put("kind", event.kind.name)
         on.put("sourceType", event.sourceType)
         when(event) {
             is ElementEvent<U> -> serialise(on, event)
@@ -81,7 +81,7 @@ public object Jsonifier {
         return on
     }
 
-    fun serialise<U:Comparable<U>>(on: ObjectNode, event: ElementEvent<U>) {
+    fun<U:Comparable<U>> serialise(on: ObjectNode, event: ElementEvent<U>) {
         on.put("id", om.valueToTree<JsonNode>(event.id))
         when(event) {
             is UpdateEvent<U, *> -> {
@@ -99,7 +99,7 @@ public object Jsonifier {
             is Float -> vnode.put(it, pv)
             is Number -> vnode.put(it, pv.toLong())
             is Boolean -> vnode.put(it, pv)
-            is Enum<*> -> vnode.put(it, pv.name())
+            is Enum<*> -> vnode.put(it, pv.name)
             is String -> vnode.put(it, pv)
             is Date -> vnode.put(it, jsonDate.format(pv))
             is LivingElement<*> -> {
@@ -129,22 +129,22 @@ public object Jsonifier {
                 else throw IllegalArgumentException("cant set $it to null!!")
             } else if (pd.relation) {
                 when(pd.linkType) {
-                    javaClass<Long>() -> m[it] = json[it]!!.asLong()
-                    javaClass<Int>() -> m[it] = json[it]!!.asInt()
-                    javaClass<java.lang.Long>() -> m[it] = json[it]!!.asLong()
-                    javaClass<java.lang.Integer>() -> m[it] = json[it]!!.asInt()
+                    Long::class.java -> m[it] = json[it]!!.asLong()
+                    Int::class.java -> m[it] = json[it]!!.asInt()
+                    java.lang.Long::class.java -> m[it] = json[it]!!.asLong()
+                    java.lang.Integer::class.java -> m[it] = json[it]!!.asInt()
                     else -> throw IllegalArgumentException("$it: ${pd.linkType} currently not supported")
                 }
             } else {
                 when(pd.classOf) {
-                    javaClass<String>() -> m[it] = json[it]!!.textValue()
-                    javaClass<Long>() -> m[it] = json[it]!!.longValue()
-                    javaClass<Int>() -> m[it] = json[it]!!.intValue()
+                    String::class.java -> m[it] = json[it]!!.textValue()
+                    Long::class.java -> m[it] = json[it]!!.longValue()
+                    Int::class.java -> m[it] = json[it]!!.intValue()
 
-                    javaClass<Double>() -> m[it] = json[it]!!.doubleValue()
-                    javaClass<Float>() -> m[it] = json[it]!!.floatValue()
-                    javaClass<Boolean>() -> m[it] = json[it]!!.booleanValue()
-                    javaClass<Date>() -> m[it] = jsonDate.parse(json[it]!!.textValue())
+                    Double::class.java -> m[it] = json[it]!!.doubleValue()
+                    Float::class.java -> m[it] = json[it]!!.floatValue()
+                    Boolean::class.java -> m[it] = json[it]!!.booleanValue()
+                    Date::class.java -> m[it] = jsonDate.parse(json[it]!!.textValue())
                     else -> if (pd.classOf?.isEnum()?:false) {
                         m[it] = EnumDecoder.decode(pd.classOf, json[it]!!.textValue())
                     }
@@ -161,7 +161,7 @@ public object Jsonifier {
 
     private fun<K : Any, V : Any?> asMap(it: Iterable<Pair<K, V>>) {
         val m = HashMap<K, V>()
-        it.forEach { m.putAll(it) }
+        it.forEach { m += it }
     }
 
     public fun entity(json: ObjectNode): String = json["entity"]?.toString()!!

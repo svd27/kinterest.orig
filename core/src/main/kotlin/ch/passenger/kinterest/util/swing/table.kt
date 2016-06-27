@@ -28,12 +28,12 @@ class InterestTableModel<T:LivingElement<U>,U:Comparable<U>>(val interest:Intere
     init {
         interest.target.getMethods().forEach {
             if(Modifier.isPublic(it.getModifiers())) {
-                val annid : Id? = it.getAnnotation(javaClass<Id>())
-                val trans = it.getAnnotation(javaClass<Transient>())
-                if(trans==null && (annid!=null || it.getName()!!.startsWith("get"))) {
-                    val prop = if(annid!=null && !it.getName()!!.startsWith("get")) it.getName()!! else it.getName()!!.substring(3).decapitalize()
+                val annid : Id? = it.getAnnotation(Id::class.java)
+                val trans = it.getAnnotation(Transient::class.java)
+                if(trans==null && (annid!=null || it.name!!.startsWith("get"))) {
+                    val prop = if(annid!=null && !it.name!!.startsWith("get")) it.name!! else it.name!!.substring(3).decapitalize()
                     var setter : Method? = null
-                    var sname = "set${prop.capitalize()}"
+                    val sname = "set${prop.capitalize()}"
                     interest.target.getMethods().forEach {
                         if(it.getName()!!.equals(sname)) setter = it
                     }
@@ -64,7 +64,7 @@ class InterestTableModel<T:LivingElement<U>,U:Comparable<U>>(val interest:Intere
     override fun getColumnClass(columnIndex: Int): Class<out Any?> {
         val rt = columnAt(columnIndex)?.getter?.getReturnType()
         when(rt) {
-            javaClass<Date>() -> return javaClass<Date>()
+            Date::class.java -> return Date::class.java
         }
         return super<AbstractTableModel>.getColumnClass(columnIndex)
     }
@@ -75,12 +75,12 @@ class InterestTableModel<T:LivingElement<U>,U:Comparable<U>>(val interest:Intere
     }
 
     fun get(i:Int) = interest.at(i)
-    fun get(id:U) = interest[id]
+    fun get(id:U) = interest.get(id)
 
 
     override fun getRowCount(): Int  {log.info("rowcount ${interest.currentsize}"); return interest.currentsize}
     override fun getColumnCount(): Int = columns.size
-    override fun getValueAt(rowIndex: Int, columnIndex: Int): Any? = colmap[columns[columnIndex]]!!.value(this[rowIndex])
+    override fun getValueAt(rowIndex: Int, columnIndex: Int): Any? = colmap[columns[columnIndex]]!!.value(this.get(rowIndex))
 
     fun column(property:String) : PropertyColumn<T,U>? = colmap[property]
 

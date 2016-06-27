@@ -44,12 +44,12 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     var events : EventPublisher? = null
     set(v) {
         if(field ==null && v!=null) {
-            interests.values().forEach {
+            interests.values.forEach {
                 val subscription = it.observable.subscribe{if(it is Event<*>) events?.publish(listOf(it as Event<Comparable<Any>>))}!!
                 subjects[it.id] = subscription
             }
         } else if(field !=null&&v==null) {
-            subjects.values().forEach { it.unsubscribe() }
+            subjects.values.forEach { it.unsubscribe() }
             subjects.clear()
         }
         field = v
@@ -66,7 +66,7 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
                 log.warn("interest $id done")
             }
             override fun onError(e: Throwable?) {
-                log.error(e?.getMessage(), e)
+                log.error(e?.message, e)
                 e?.printStackTrace()
             }
             override fun onNext(args: Event<Comparable<Any?>>?) {
@@ -82,12 +82,12 @@ public open class KISession(val principal: KIPrincipal, val app:KIApplication) {
     fun dispose() {
         events = null
         entities = null
-        interests.values().forEach { it.close() }
+        interests.values.forEach { it.close() }
     }
 
     fun allInterests(cb:(Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>)->Unit) {
-        log.info("iterating ${interests.size()} interests")
-        interests.values().forEach { cb(it as Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>) }
+        log.info("iterating ${interests.size} interests")
+        interests.values.forEach { cb(it as Interest<out LivingElement<Comparable<Any>>,out Comparable<Any>>) }
     }
 
 
@@ -195,7 +195,7 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         bulkUpdate(Jsonifier.idOf(json) as U, Jsonifier.valueMap(json, galaxy.descriptor))
     }
     public fun bulkUpdate(id: U, values: Map<String, Any?>) {
-        values.entrySet().forEach {
+        values.entries.forEach {
             galaxy.setValue(id, it.key, it.value)
         }
     }
@@ -247,7 +247,7 @@ public open class InterestService<T : LivingElement<U>, U : Comparable<U>>(val g
         if(ai!=null) ai.filter = galaxy.filterFactory.staticFilter(ai)
     }
 
-    public fun call<W:Comparable<W>>(id:W, action:String, pars:ArrayNode) : Any? {
+    public fun<W:Comparable<W>> call(id:W, action:String, pars:ArrayNode) : Any? {
         val eid = id as U
         val om = ObjectMapper()
         val a = galaxy.sourceType.exposeds().filter {

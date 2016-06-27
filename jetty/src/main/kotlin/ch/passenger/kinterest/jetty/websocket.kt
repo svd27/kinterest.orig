@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory
  * Time: 05:12
  */
 
-private val log : Logger = LoggerFactory.getLogger(javaClass<KIWebsocketAdapter>().getPackage()!!.getName())!!
+private val log : Logger = LoggerFactory.getLogger(KIWebsocketAdapter::class.java.`package`!!.name)!!
 
 abstract class KIWebsocketAdapter(protected val session : HttpSession?) : WebSocketAdapter() {
     protected var wssession : Session? = getSession()
